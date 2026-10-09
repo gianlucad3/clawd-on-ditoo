@@ -108,3 +108,19 @@ All three usable channels working together on the real Ditoo Pro:
   reverse-engineered controller.
 - User also owns a Ditoo 5M (`Divoom Ditoo-5M-Audio`); using
   the Pro for now.
+
+## Streaming frame rate — MEASURED 2026-10-08 (Timebox Evo)
+
+Measured with `bench/fps_ceiling.py` on a Divoom Timebox Evo (RFCOMM channel 1),
+streaming real 16×16 Clawd mood frames (~135 bytes per `push_image` packet):
+
+- **Link:** 498 fps back-to-back, 65.6 KB/s; push p50 0.2 ms, p95 7.8 ms, one
+  313 ms stall. Bluetooth is not the limit at animation rates.
+- **On-screen lag:** no backlog at any tested rate (4–30 fps). Flash-to-Enter
+  latency stayed within reaction-time spread (baseline median 393 ms); one 10 fps
+  round at 2.4 s was a one-off (the other round at 10 fps was 365 ms).
+- **Dropped frames:** none at 4, 8, 12 or 16 fps (slow-motion video of the frame
+  counter). Not checked above 16 fps.
+
+Practical takeaway: 8 fps (125 ms frames) used by the 16×16 animation skills has
+plenty of headroom; up to 16 fps is verified drop-free.

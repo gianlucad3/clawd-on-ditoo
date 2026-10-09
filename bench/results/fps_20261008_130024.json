@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-10-08T12:59:57",
+  "mac": "B1:21:81:CD:98:BE",
+  "channel": 1,
+  "frames_source": "built-in bouncing column (no manifests found)",
+  "simulate": false,
+  "counter": {
+    "segments": [
+      {
+        "fps": 4.0,
+        "frames": 20,
+        "achieved_fps": 3.996308777850527,
+        "late": 0,
+        "push_p50_ms": 0.5072079948149621,
+        "push_p95_ms": 0.5875409988220781
+      },
+      {
+        "fps": 8.0,
+        "frames": 40,
+        "achieved_fps": 7.994138792545668,
+        "late": 0,
+        "push_p50_ms": 0.45525000314228237,
+        "push_p95_ms": 0.5549999768845737
+      },
+      {
+        "fps": 12.0,
+        "frames": 60,
+        "achieved_fps": 11.99241337738256,
+        "late": 0,
+        "push_p50_ms": 0.39820800884626806,
+        "push_p95_ms": 0.5449170130304992
+      },
+      {
+        "fps": 16.0,
+        "frames": 80,
+        "achieved_fps": 15.983655261434233,
+        "late": 0,
+        "push_p50_ms": 0.414082984207198,
+        "push_p95_ms": 0.5799579957965761
+      }
+    ]
+  }
+}

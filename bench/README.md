@@ -8,6 +8,7 @@ before we build any creative layer on top.
 bench/
   probe.py           static detection — no Bluetooth permission needed
   display_bench.py   per-frame latency, FPS, ACK errors over 100+ pushes
+  fps_ceiling.py     max streaming FPS: link throughput, on-screen lag, dropped frames
   audio_bench.py     `say` and `afplay` startup latency
   buttons_listen.py  capture inbound RFCOMM packets when you press buttons
   results/           CSV / JSONL / markdown logs from runs
@@ -100,6 +101,29 @@ Three outcomes:
 2. **No bytes** — try `--channel 2`, then conclude buttons aren't on this channel.
 3. **Bytes flow but they're meaningless** — they exist but are heartbeats or
    power notifications. The signature map will make this obvious.
+
+### 5. Run `fps_ceiling.py` to find the animation frame-rate budget
+
+`writeSync` returns when a packet is queued, not when it's on screen, so the
+display bench can't tell you how fast the device actually redraws. This one
+attacks it from three sides:
+
+```bash
+python3 bench/fps_ceiling.py                          # link + lag
+python3 bench/fps_ceiling.py counter --rates 4,8,12,16  # slow-motion video check
+python3 bench/fps_ceiling.py --frames ~/.clawd/assets   # stream real Clawd frames
+```
+
+- **link** pushes frames back-to-back. If pushes start blocking, that's the
+  Bluetooth ceiling; if they never block, the link isn't the limit.
+- **lag** streams at each rate, then flashes green; press Enter when you see
+  it. A 1 FPS run calibrates your reaction time. More than 150 ms over that
+  means frames are queueing: the rate is too high.
+- **counter** shows a frame number at each rate. Film it in slow motion and
+  look for skipped numbers (dropped frames don't show up as lag).
+
+Stop the Clawd daemon first (it holds the RFCOMM channel). MAC and channel come
+from `~/.clawd/config.json`. Results go to `results/fps_<timestamp>.json`.
 
 ### What's deliberately not here
 

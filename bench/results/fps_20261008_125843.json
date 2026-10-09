@@ -1,0 +1,101 @@
+{
+  "timestamp": "2026-10-08T12:56:12",
+  "mac": "B1:21:81:CD:98:BE",
+  "channel": 1,
+  "frames_source": "212 frames from /tmp/clawd-compare/chosen (alert, happy, idle, poke, sleeping, thinking, typing)",
+  "simulate": false,
+  "link": {
+    "frames": 2493,
+    "seconds": 5.003472707991023,
+    "achieved_fps": 498.2539419108735,
+    "bytes_per_s": 67196.92893758125,
+    "packet_bytes_avg": 135.25943396226415,
+    "packet_bytes_max": 176,
+    "push_p50_ms": 0.16779100405983627,
+    "push_p95_ms": 7.826000015484169,
+    "push_max_ms": 313.53991699870676
+  },
+  "lag": {
+    "baseline_s": 0.39255945797776803,
+    "baseline_trials_s": [
+      0.4225399999995716,
+      0.39255945797776803,
+      0.36362179199932143
+    ],
+    "rates": [
+      {
+        "fps": 4.0,
+        "latencies_s": [
+          0.3879353340016678,
+          0.339047000015853
+        ],
+        "excess_lag_s": -0.02906829096900765,
+        "keeps_up": true
+      },
+      {
+        "fps": 6.0,
+        "latencies_s": [
+          0.3729389999934938,
+          0.33099812499131076
+        ],
+        "excess_lag_s": -0.04059089548536576,
+        "keeps_up": true
+      },
+      {
+        "fps": 8.0,
+        "latencies_s": [
+          0.31680470798164606,
+          0.3394984170154203
+        ],
+        "excess_lag_s": -0.06440789547923487,
+        "keeps_up": true
+      },
+      {
+        "fps": 10.0,
+        "latencies_s": [
+          2.4373602499836124,
+          0.36519720798241906
+        ],
+        "excess_lag_s": 1.0087192710052477,
+        "keeps_up": false
+      },
+      {
+        "fps": 12.0,
+        "latencies_s": [
+          0.38721099999384023,
+          0.4278132079925854
+        ],
+        "excess_lag_s": 0.01495264601544477,
+        "keeps_up": true
+      },
+      {
+        "fps": 16.0,
+        "latencies_s": [
+          0.3559299169864971,
+          0.5081209579948336
+        ],
+        "excess_lag_s": 0.03946597951289732,
+        "keeps_up": true
+      },
+      {
+        "fps": 20.0,
+        "latencies_s": [
+          0.3498160419985652,
+          0.326096457982203
+        ],
+        "excess_lag_s": -0.05460320798738394,
+        "keeps_up": true
+      },
+      {
+        "fps": 30.0,
+        "latencies_s": [
+          0.3236111250007525,
+          0.4068935420073103
+        ],
+        "excess_lag_s": -0.02730712447373662,
+        "keeps_up": true
+      }
+    ],
+    "ceiling_fps": 8.0
+  }
+}
