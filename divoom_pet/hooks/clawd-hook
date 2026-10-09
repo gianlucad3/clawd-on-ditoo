@@ -19,7 +19,7 @@
 #
 # Live content: post-tool detects TodoWrite and drives a real progress bar from the
 # todo list; subagent ticks an "agents finished" tally badge; session-start resets it.
-# A Bash test run (pytest, npm test, go test…) shows happy.tests / alert.tests;
+# A Bash test run (pytest, npm test, go test…) plays tests-pass / tests-fail;
 # compact and session-end play the `compact` / `goodbye` assets if installed.
 #
 # Hooks receive the full hook payload as JSON on stdin. We read enough to get the
@@ -79,23 +79,37 @@ project_name() {
     basename "$dir" | tr '_-' '  '
 }
 
-# For a Bash PostToolUse that ran tests, print "pass" or "fail" (else nothing).
-# The payload has no exit code, so this reads the output: any failure marker
-# wins, otherwise a pass marker counts as a pass.
-test_outcome() {
+# For a Bash PostToolUse, print what the command was: "pass" / "fail" for a test
+# run, "pr" for `gh pr create`, else nothing. The payload has no exit code, so a
+# test run is judged by its output (colour codes stripped first): any failure
+# or error count wins, otherwise a pass marker counts as a pass.
+bash_outcome() {
     [ -z "$stdin_json" ] && return
     printf '%s' "$stdin_json" | python3 -c "
 import json, re, sys
+TEST_CMD = re.compile(
+    r'^(?:(?:uv run|uvx|npx|bunx|poetry run|pipenv run|bundle exec|time)\s+)*(?:\S*/)?'
+    r'(?:pytest|py\.test|jest|vitest|rspec|python[0-9.]*\s+-m\s+(?:pytest|unittest)'
+    r'|(?:npm|yarn|pnpm|bun)\s+(?:run\s+)?test|go\s+test|cargo\s+test|swift\s+test'
+    r'|make\s+(?:\S+\s+)*test)\b')
+FAIL = re.compile(r'\bFAIL(ED|URES?)?\b|\b[1-9][0-9]* (failed|failing|failures?|errors?)\b|^not ok\b', re.M)
+PASS = re.compile(r'\bOK\b|\b[0-9]+ (passed|passing)\b|^ok\b|test result: ok|\bPASS(ED)?\b|\b0 failures\b', re.M)
 try:
     obj = json.loads(sys.stdin.read())
     cmd = obj.get('tool_input', {}).get('command', '') or ''
-    if not re.search(r'pytest|unittest|(npm|yarn|pnpm|bun) (run )?test|go test|cargo test|jest|vitest|swift test|make test|rspec', cmd):
+    if 'gh pr create' in cmd:
+        print('pr')
+        sys.exit()
+    # Each command in a chain or pipeline, minus leading VAR=value assignments.
+    parts = [re.sub(r'^(?:\w+=\S*\s+)*', '', p.strip()) for p in re.split(r'&&|\|\||[;|]', cmd)]
+    if not any(TEST_CMD.match(p) for p in parts):
         sys.exit()
     resp = obj.get('tool_response', {}) or {}
     out = resp if isinstance(resp, str) else ' '.join(str(resp.get(k, '')) for k in ('stdout', 'stderr'))
-    if re.search(r'\\bFAIL(ED|URES?)?\\b|\\b[1-9][0-9]* (failed|failing)\\b|^not ok|Traceback|panicked', out, re.M):
+    out = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', out)
+    if FAIL.search(out):
         print('fail')
-    elif re.search(r'\\bOK\\b|\\bpassed\\b|\\bpassing\\b|^ok\\b|test result: ok|\\bPASS\\b', out, re.M):
+    elif PASS.search(out):
         print('pass')
 except Exception:
     pass
@@ -162,17 +176,13 @@ case "$action" in
         post_state coding "$tool"
         # TodoWrite drives a live progress bar from the todo list.
         [ "$tool" = "TodoWrite" ] && post_todo_progress
-        # A test run: celebrate a pass, wince at a failure.
+        # A test run plays a one-shot pass / fail scene (the mood stays coding, so
+        # the session still reads as running); opening a PR gets confetti.
         if [ "$tool" = "Bash" ]; then
-            case "$(test_outcome)" in
-                pass) post_state happy tests ;;
-                fail) post_state alert tests ;;
-            esac
-        fi
-        # Announce when this session opens a pull request.
-        if [ "$tool" = "Bash" ]; then
-            case "$(json_field command)" in
-                *"gh pr create"*)
+            case "$(bash_outcome)" in
+                pass) post_event '{"kind":"play","name":"tests-pass"}' ;;
+                fail) post_event '{"kind":"play","name":"tests-fail"}' ;;
+                pr)
                     say_text "$(project_name) opened a pull request"
                     post_event '{"kind":"effect","name":"confetti"}'
                     ;;
@@ -202,7 +212,14 @@ case "$action" in
         post_event '{"kind":"play","name":"compact"}'
         ;;
     session-end)
-        post_event '{"kind":"play","name":"goodbye"}'
+        # /clear ends the session but carries on in a new one: no goodbye then.
+        [ "$(json_field reason)" != "clear" ] && post_event '{"kind":"play","name":"goodbye"}'
+        # Take this session's dot off the fleet bar now rather than at its TTL.
+        if [ -n "$session_id" ]; then
+            curl -s --max-time "$TIMEOUT" -XPOST -H 'Content-Type: application/json' \
+                -d "{\"session_id\":\"$session_id\",\"status\":\"ended\"}" \
+                "$DAEMON_URL/session" >/dev/null 2>&1 || true
+        fi
         ;;
     touch)
         curl -s --max-time "$TIMEOUT" -XPOST "$DAEMON_URL/touch" >/dev/null 2>&1 || true

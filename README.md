@@ -162,9 +162,9 @@ Wired into Claude Code (via `install-hooks`) he does this automatically:
   `SessionStart` zeroes it. Hide the badge with `clawd start --no-agent-badge`.
 - **Per-event animations** (with the mood overrides from `assets/moods/`): a
   different `tool_use` loop per tool (Bash, Edit, Read, web, subagents), its own
-  `alert` for a permission prompt or a wait for input, `happy` / `alert` variants
-  when a test run passes or fails, and one-shot scenes on `PreCompact` (compact)
-  and `SessionEnd` (goodbye).
+  `alert` for a permission prompt or a wait for input, and one-shot scenes when a
+  test run passes or fails (`tests-pass` / `tests-fail`), on `PreCompact`
+  (compact) and on `SessionEnd` (goodbye, which also drops the session's dot).
 - **`clawd watch`** polls a repo with `gh`: a **new PR**, **CI red/green**, or a
   **merge** triggers a banner (+ mood + voice). Run it inside your repo, or point
   it anywhere with `--repo owner/name`.

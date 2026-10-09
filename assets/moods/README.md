@@ -10,14 +10,13 @@ that mood's built-in sprites; `<mood>.<variant>.html` adds a variant:
 - `tool_use.*`: picked by the running tool instead of rotating: `bash`
   (Bash), `edit` (Edit/Write), `read` (Read/Grep/Glob), `web` (WebFetch/
   WebSearch), `task` (subagents). Other tools play `tool_use`.
-- `alert.*` / `happy.*`: picked by the event too: `alert.permission`
-  (permission prompt), `alert.waiting` (waiting for your input), and
-  `alert.tests` / `happy.tests` when a Bash test run fails / passes.
+- `alert.*`: picked by the event too: `alert.permission` (permission
+  prompt) and `alert.waiting` (waiting for your input).
 
 One-shot scenes live in `../scenes/` and install to `~/.clawd/assets`, where
 `clawd notify play <name>` and the hooks play them: `commit` and `push` (the
-git hooks in `examples/git-hooks`), `compact` (PreCompact) and `goodbye`
-(SessionEnd).
+git hooks in `examples/git-hooks`), `tests-pass` / `tests-fail` (a Bash
+test run passes / fails), `compact` (PreCompact) and `goodbye` (SessionEnd).
 
 Install them with
 

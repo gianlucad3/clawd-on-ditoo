@@ -57,13 +57,18 @@ class MoodSetTests(unittest.TestCase):
         self.assertEqual(_color(m.keyed("read")), [(9, 9, 9)])   # no read variant
         self.assertEqual(_color(m.keyed("")), [(9, 9, 9)])
 
+    def test_keyed_without_main_rotates_variants(self):
+        a = [([(1, 1, 1)] * 256, 125)]
+        b = [([(2, 2, 2)] * 256, 125)]
+        m = MoodSet(variants={"dance": a, "spin": b})
+        seen = {_color(m.keyed(""))[0] for _ in range(2)}
+        self.assertEqual(seen, {(1, 1, 1), (2, 2, 2)})
+
     def test_variant_for_notes(self):
         self.assertEqual(variant_for(State.TOOL_USE, "Grep"), "read")
         self.assertEqual(variant_for(State.TOOL_USE, "mcp__x"), "")
         self.assertEqual(variant_for(State.ALERT, "Claude needs your permission to use Bash"), "permission")
         self.assertEqual(variant_for(State.ALERT, "Claude is waiting for your input"), "waiting")
-        self.assertEqual(variant_for(State.ALERT, "tests"), "tests")
-        self.assertEqual(variant_for(State.HAPPY, "tests"), "tests")
         self.assertEqual(variant_for(State.HAPPY, "done"), "")
 
 if __name__ == "__main__":

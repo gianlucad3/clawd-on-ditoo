@@ -68,6 +68,14 @@ class RegistryTests(unittest.TestCase):
         r.prune(TTL[SESSION_FINISHED] + 1.0)
         self.assertIn("wait", [sid for sid, _ in r.snapshot()])
 
+    def test_remove_drops_an_ended_session(self):
+        r = SessionRegistry()
+        r.update("gone", SESSION_NEEDS_INPUT, 0.0)
+        r.update("live", SESSION_RUNNING, 0.0)
+        r.remove("gone")
+        r.remove("never-seen")
+        self.assertEqual([sid for sid, _ in r.snapshot()], ["live"])
+
 
 if __name__ == "__main__":
     unittest.main()

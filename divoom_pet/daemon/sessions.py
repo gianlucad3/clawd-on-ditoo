@@ -72,6 +72,11 @@ class SessionRegistry:
             first_seen = prev.first_seen if prev else now
             self._sessions[session_id] = SessionInfo(state, now, first_seen)
 
+    def remove(self, session_id: str) -> None:
+        """Drop a session that has ended, so its dot leaves the strip at once."""
+        with self._lock:
+            self._sessions = {k: v for k, v in self._sessions.items() if k != session_id}
+
     def prune(self, now: float) -> None:
         with self._lock:
             self._sessions = {

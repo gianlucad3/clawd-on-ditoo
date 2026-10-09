@@ -15,9 +15,9 @@ Valid mood names are the State values (idle, thinking, happy, …).
 tool_use, alert and happy variants are picked by the event's note instead of
 rotating (see variant_for): tool_use.bash.json plays for Bash,
 tool_use.edit.json for Edit/Write, and so on (TOOL_VARIANTS); alert.permission
-for a permission prompt, alert.waiting when Claude waits for input, and
-alert.tests / happy.tests when a test run fails / passes. Without a matching
-variant these moods play their main file.
+for a permission prompt and alert.waiting when Claude waits for input. Without
+a matching variant these moods play their main file (or, with no main file,
+rotate through their variants).
 """
 
 from __future__ import annotations
@@ -55,8 +55,6 @@ def variant_for(state: State, note: str) -> str:
     if state == State.TOOL_USE:
         return TOOL_VARIANTS.get(note, "")
     n = (note or "").lower()
-    if n == "tests":
-        return "tests"
     if state == State.ALERT:
         if "permission" in n:
             return "permission"
@@ -92,8 +90,9 @@ class MoodSet:
         return self.main
 
     def keyed(self, variant: str) -> List:
-        """The loop for a keyed mood (see variant_for): that variant, else main."""
-        return self.variants.get(variant) or self.main or []
+        """The loop for a keyed mood (see variant_for): that variant, else main,
+        else (a mood with only variants) the usual rotation."""
+        return self.variants.get(variant) or self.main or self.next_loop()
 
 
 def moods_from_dir(directory: Path) -> Dict[State, MoodSet]:

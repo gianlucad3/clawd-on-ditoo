@@ -67,6 +67,7 @@ class PetController:
     # before the mood loop resumes.
     _overlays: Dict[str, object] = field(default_factory=dict)
     _takeover: Optional[List] = None
+    _takeover_queued: threading.Event = field(default_factory=threading.Event)
     _agents_home: int = 0  # running tally of finished subagents this session
     _stop: threading.Event = field(default_factory=threading.Event)
     _state_changed: threading.Event = field(default_factory=threading.Event)
@@ -88,6 +89,7 @@ class PetController:
     def stop(self) -> None:
         self._stop.set()
         self._state_changed.set()
+        self._takeover_queued.set()
         if self._loop_thread:
             self._loop_thread.join(timeout=1.5)
         self.bridge.stop()
@@ -178,12 +180,14 @@ class PetController:
             return
         with self._lock:
             self._takeover = list(frames)
+        self._takeover_queued.set()
         self._state_changed.set()
 
     def _pop_takeover(self) -> Optional[List]:
         with self._lock:
             pending = self._takeover
             self._takeover = None
+            self._takeover_queued.clear()
             return pending
 
     def agent_came_home(self) -> int:
@@ -252,8 +256,9 @@ class PetController:
         return loop or animation_for_state(state, idle_opts)
 
     def _play_frames(self, frames: List) -> None:
-        """Push a raw (frame, duration_ms) animation once, interruptible by any
-        state/overlay/takeover change. Used for one-shot takeovers."""
+        """Push a raw (frame, duration_ms) animation once. Used for one-shot
+        takeovers: a state or overlay change does not cut it short (the mood loop
+        picks those up when it ends), only a newer takeover or stop() does."""
         for frame, duration_ms in frames:
             if self._stop.is_set():
                 return
@@ -262,9 +267,8 @@ class PetController:
                     self.bridge.push_image(frame)
                 except Exception as e:
                     log.debug("push_image failed: %s", e)
-            if self._state_changed.wait(timeout=max(0.04, duration_ms / 1000.0)):
-                self._state_changed.clear()
-                return  # interrupted — abandon the rest of this takeover
+            if self._takeover_queued.wait(timeout=max(0.04, duration_ms / 1000.0)):
+                return  # a newer takeover (or stop) replaces the rest of this one
 
     def _maybe_auto_transition(self, loop_s: float = 0.0) -> None:
         """Check timeouts after a full loop. `loop_s` is that loop's length: a

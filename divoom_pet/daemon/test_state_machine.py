@@ -56,6 +56,25 @@ class TakeoverTests(unittest.TestCase):
         c.play_takeover([])
         self.assertIsNone(c._pop_takeover())
 
+    def _play_with(self, c, during):
+        """Play a 6-frame takeover, calling `during` after the first frame;
+        returns how many frames reached the bridge."""
+        pushed = []
+        c.bridge = type("FakeBridge", (), {
+            "ensure_alive": lambda self: True,
+            "push_image": lambda self, frame: (pushed.append(frame), len(pushed) == 1 and during()),
+        })()
+        c._play_frames([([(0, 0, 0)] * 256, 40)] * 6)
+        return len(pushed)
+
+    def test_state_change_does_not_cut_a_takeover(self):
+        c = _controller()
+        self.assertEqual(self._play_with(c, lambda: c.set_state(State.CODING, note="Bash")), 6)
+
+    def test_newer_takeover_replaces_the_playing_one(self):
+        c = _controller()
+        self.assertEqual(self._play_with(c, lambda: c.play_takeover([([(1, 1, 1)] * 256, 40)])), 1)
+
 
 class AgentTallyTests(unittest.TestCase):
     def test_increments_and_shows_badge(self):

@@ -142,7 +142,8 @@ class PetHandler(BaseHTTPRequestHandler):
                 target = State(name)
             except ValueError:
                 return self._reply(400, {"error": f"unknown state: {name}"})
-            self.controller.set_state(target, note=body.get("note", ""))
+            note = body.get("note")
+            self.controller.set_state(target, note=note if isinstance(note, str) else "")
             # A session_id rides along on hook posts: track this session in the fleet.
             session_id = body.get("session_id")
             if session_id and self.sessions is not None:
@@ -154,10 +155,13 @@ class PetHandler(BaseHTTPRequestHandler):
             status = str(body.get("status") or "").strip().lower()
             if not session_id:
                 return self._reply(400, {"error": "session needs a 'session_id'"})
-            if status not in VALID_STATES:
-                return self._reply(400, {"error": f"status must be one of {sorted(VALID_STATES)}"})
+            if status != "ended" and status not in VALID_STATES:
+                return self._reply(400, {"error": f"status must be one of {sorted(VALID_STATES | {'ended'})}"})
             if self.sessions is not None:
-                self.sessions.update(session_id, status, time.time())
+                if status == "ended":
+                    self.sessions.remove(session_id)
+                else:
+                    self.sessions.update(session_id, status, time.time())
                 refresh_session_bar(self.sessions, self.controller, time.time())
             return self._reply(200, {"ok": True, "session_id": session_id, "status": status})
         if self.path == "/touch":

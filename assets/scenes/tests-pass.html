@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>alert.tests</title>
+<title>tests-pass</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -326,72 +326,67 @@ function phase(f, phases) {
 }
 
 // === YOUR ANIMATION HERE ====================================
-PALETTE.xRed = '#E05050';
-PALETTE.sweat = '#7FB0E8';
+PALETTE.checkGreen = '#5AC870';
+PALETTE.checkFlash = '#C8F0C8';
+PALETTE.sparkle = '#5AC870';
 
-const NAME = 'alert.tests';
+const NAME = 'tests-pass';
 const FPS = 8;
 const DUR = 3;
 const TOTAL = FPS * DUR; // 24
-const PHASES = [['oops', 4], ['facepalm', 12], ['shrug', 8]];
+const PHASES = [['pop', 4], ['cheer', 12], ['calm', 8]];
 
 function render(f) {
   drawBg();
 
-  const ox = 1, oy = 7;
   const { ph, i, n, pt } = phase(f, PHASES);
 
-  // --- X fade logic ---
-  let xAlpha = 1;
-  if (ph === 'shrug' && i >= 5) {
-    // last 3 frames of shrug: alpha 1, 0.66, 0.33
-    if (i === 5) xAlpha = 1;
-    else if (i === 6) xAlpha = 0.66;
-    else if (i === 7) xAlpha = 0.33;
+  // --- check icon ---
+  // appears in pop, stays through cheer + calm, disappears last 2 frames of calm (f 22-23)
+  let checkColor = null;
+  if (f < 22) {
+    if (f === 0) checkColor = PALETTE.checkFlash;
+    else checkColor = PALETTE.checkGreen;
+    drawIcon('check', 5, 0, checkColor);
   }
 
-  // --- draw X ---
-  if (xAlpha > 0) {
-    px(3, 1, PALETTE.xRed, xAlpha);
-    px(5, 1, PALETTE.xRed, xAlpha);
-    px(4, 2, PALETTE.xRed, xAlpha);
-    px(3, 3, PALETTE.xRed, xAlpha);
-    px(5, 3, PALETTE.xRed, xAlpha);
-  }
-
-  // --- Clawd state ---
+  // --- Clawd ---
+  const ox = 1;
+  let cy = 7;
   let eyes = 'forward';
+  let blush = 0;
   let squash = false;
 
-  if (ph === 'oops') {
-    eyes = 'look_left';
-  } else if (ph === 'facepalm') {
-    eyes = 'closed';
-    squash = true;
-  } else { // shrug
+  if (ph === 'pop') {
+    eyes = 'happy';
+    blush = 0.8;
+  } else if (ph === 'cheer') {
+    eyes = 'happy';
+    blush = 0.8;
+    // hop: cy = 6 on 2 frames of every 4
+    const hop = (i % 4 < 2);
+    if (hop) cy = 6;
+  } else if (ph === 'calm') {
     eyes = 'forward';
+    blush = 0.8 * (1 - pt);
   }
 
-  drawClawd(ox, oy, { eyes, squash });
+  drawClawd(ox, cy, { eyes, blush, squash });
 
-  // --- Claws ---
-  if (ph === 'facepalm') {
-    drawClaw(ox, oy, 'right', 'raise', { squash });
-  } else if (ph === 'shrug' && i < 3) {
-    // shrug with both claws out for first 3 frames
-    drawClaw(ox, oy, 'left', 'out', { squash });
-    drawClaw(ox, oy, 'right', 'out', { squash });
+  // both claws up on hop frames
+  if (ph === 'cheer' && (i % 4 < 2)) {
+    drawClaw(ox, cy, 'left', 'wave', { squash });
+    drawClaw(ox, cy, 'right', 'wave', { squash });
   }
 
-  // --- Sweat drop ---
-  // Appears during facepalm (12 frames).
-  // "for 6 frames" -> appears for first 6 frames of facepalm (i < 6).
-  // "slides down 1 row halfway" -> first half (i < 3) at rows 2-3, second half (i >= 3) at rows 3-4.
-  // Col 15.
-  if (ph === 'facepalm' && i < 6) {
-    let sy = 2;
-    if (i >= 3) sy = 3;
-    drawIcon('sweat', 15, sy, PALETTE.sweat);
+  // --- sparkles on 1st and 3rd hop ---
+  // cheer starts at f=4. 1st hop: i=0,1 (f=4,5). 3rd hop: i=8,9 (f=12,13).
+  // Spawn on the first frame of each hop: f=4 and f=12.
+  if (f === 4 || f === 12) {
+    // check is at cols 5-9, rows 0-3. corners: (5,0) and (9,0)
+    // fly sideways out of the check's arms (from row 0 upward they'd leave at once)
+    addParticle(3, 1, PALETTE.sparkle, { life: 4, vx: -0.4, gravity: 0 });
+    addParticle(11, 1, PALETTE.sparkle, { life: 4, vx: 0.4, gravity: 0 });
   }
 
   tickParticles();

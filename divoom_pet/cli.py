@@ -686,7 +686,7 @@ def main(argv=None) -> int:
 
     p_session = sub.add_parser("session", help="Report a session's state to the fleet bar")
     p_session.add_argument("id", help="session id")
-    p_session.add_argument("status", choices=["running", "finished", "needs_input", "idle"])
+    p_session.add_argument("status", choices=["running", "finished", "needs_input", "idle", "ended"])
     p_session.set_defaults(func=cmd_session)
 
     p_sessions = sub.add_parser("sessions", help="List live sessions on the fleet bar")
