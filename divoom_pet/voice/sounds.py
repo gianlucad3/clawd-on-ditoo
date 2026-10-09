@@ -23,6 +23,8 @@ import struct
 import subprocess
 import threading
 import time
+import wave
+from array import array
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -328,6 +330,38 @@ def render_say_to_wav(text: str, path: Path, voice: Optional[str] = None,
         return False
 
 
+def scaled_speech(path: Path) -> Path:
+    """A copy of a spoken-line WAV scaled by MASTER_VOLUME. Chirps are rendered
+    at the master volume already, but `say` output is always full scale, so
+    without this the voice ignores the volume setting. Copies are cached per
+    volume in SOUNDS_DIR/scaled/; returns `path` unchanged on any problem."""
+    if path.name.startswith("chirp_") or MASTER_VOLUME >= 1.0:
+        return path
+    pct = int(round(MASTER_VOLUME * 100))
+    out = SOUNDS_DIR / "scaled" / f"{pct:03d}_{path.name}"
+    try:
+        if out.exists() and out.stat().st_mtime >= path.stat().st_mtime:
+            return out
+        with wave.open(str(path), "rb") as w:
+            if w.getsampwidth() != 2 or w.getnchannels() != 1:
+                return path
+            rate = w.getframerate()
+            samples = array("h", w.readframes(w.getnframes()))
+        samples = array("h", (int(x * MASTER_VOLUME) for x in samples))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
+        with wave.open(str(tmp), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(samples.tobytes())
+        os.replace(tmp, out)
+        return out
+    except (OSError, wave.Error, EOFError) as e:
+        log.warning("could not scale %s: %s", path.name, e)
+        return path
+
+
 def render_all(force: bool = False, voice: Optional[str] = None,
                chirps_only: bool = False, theme: str = "chip") -> Dict[str, Path]:
     """Render every chirp variant (and spoken line if `say` exists) into SOUNDS_DIR.
@@ -459,6 +493,7 @@ class SoundPlayer:
     def _play_file(self, path: Optional[Path]) -> None:
         if not self.enabled or not path or not path.exists():
             return
+        path = scaled_speech(path)
         # Prefer routed playback to the Ditoo so music on the default output is untouched.
         with self._serve_lock:
             if self.routed and self._serve and self._serve.stdin:

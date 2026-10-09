@@ -118,5 +118,30 @@ class SayCacheTests(unittest.TestCase):
         self.assertEqual(len(sp._played), 1)
 
 
+
+class ScaledSpeechTests(unittest.TestCase):
+    """Spoken lines follow the master volume; chirps are left alone."""
+
+    def test_speech_is_scaled_and_chirps_untouched(self):
+        import array
+        import wave
+        with tempfile.TemporaryDirectory() as d:
+            orig_dir, orig_vol = snd.SOUNDS_DIR, snd.MASTER_VOLUME
+            snd.SOUNDS_DIR = Path(d)
+            try:
+                snd.set_master_volume(0.25)
+                pcm = array.array("h", [20000, -20000, 8000] * 10).tobytes()
+                speech, chirp = Path(d) / "say_hatch_0.wav", Path(d) / "chirp_done_0.wav"
+                snd.write_wav(speech, pcm)
+                snd.write_wav(chirp, pcm)
+                out = snd.scaled_speech(speech)
+                self.assertNotEqual(out, speech)
+                with wave.open(str(out)) as w:
+                    got = array.array("h", w.readframes(w.getnframes()))
+                self.assertEqual(list(got[:3]), [5000, -5000, 2000])
+                self.assertEqual(snd.scaled_speech(chirp), chirp)
+            finally:
+                snd.SOUNDS_DIR, snd.MASTER_VOLUME = orig_dir, orig_vol
+
 if __name__ == "__main__":
     unittest.main()
