@@ -8,9 +8,10 @@ Ways to let Clawd run himself. Everything here just calls the generic
 ```bash
 cp examples/git-hooks/post-commit .git/hooks/ && chmod +x .git/hooks/post-commit
 cp examples/git-hooks/post-merge  .git/hooks/ && chmod +x .git/hooks/post-merge
+cp examples/git-hooks/pre-push    .git/hooks/ && chmod +x .git/hooks/pre-push
 ```
 
-`post-commit` does a subtle `pulse`; `post-merge` throws confetti + says "Merged!".
+`post-commit` plays the `commit` stamp (or a `pulse` if it isn't installed); `pre-push` launches the `push` rocket; `post-merge` throws confetti + says "Merged!".
 Edit the scripts to taste (any `clawd notify …` works). Set `CLAWD_BIN` if your
 checkout isn't at `~/code/divoom-pet`.
 

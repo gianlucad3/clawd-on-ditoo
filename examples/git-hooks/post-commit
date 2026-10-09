@@ -6,5 +6,7 @@ CLAWD="${CLAWD_BIN:-$HOME/code/divoom-pet/bin/clawd}"
 # A quick, subtle reaction (commits are frequent). Swap for any notify command:
 #   "$CLAWD" notify effect confetti
 #   "$CLAWD" notify banner "COMMIT" --color amber
-"$CLAWD" notify effect pulse >/dev/null 2>&1 || true
+# Plays the `commit` stamp animation (assets/moods/commit.html, installed to
+# ~/.clawd/assets by build.sh); falls back to a pulse if it is not installed.
+"$CLAWD" notify play commit >/dev/null 2>&1 || "$CLAWD" notify effect pulse >/dev/null 2>&1 || true
 exit 0

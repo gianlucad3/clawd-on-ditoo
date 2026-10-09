@@ -11,12 +11,16 @@
 #       "Notification":     [{"hooks": [{"type": "command", "command": "<path>/clawd-hook alert"}]}],
 #       "Stop":             [{"hooks": [{"type": "command", "command": "<path>/clawd-hook stop"}]}],
 #       "SubagentStop":     [{"hooks": [{"type": "command", "command": "<path>/clawd-hook subagent"}]}],
-#       "SessionStart":     [{"hooks": [{"type": "command", "command": "<path>/clawd-hook session-start"}]}]
+#       "SessionStart":     [{"hooks": [{"type": "command", "command": "<path>/clawd-hook session-start"}]}],
+#       "SessionEnd":       [{"hooks": [{"type": "command", "command": "<path>/clawd-hook session-end"}]}],
+#       "PreCompact":       [{"hooks": [{"type": "command", "command": "<path>/clawd-hook compact"}]}]
 #     }
 #   }
 #
 # Live content: post-tool detects TodoWrite and drives a real progress bar from the
 # todo list; subagent ticks an "agents finished" tally badge; session-start resets it.
+# A Bash test run (pytest, npm test, go test…) shows happy.tests / alert.tests;
+# compact and session-end play the `compact` / `goodbye` assets if installed.
 #
 # Hooks receive the full hook payload as JSON on stdin. We read enough to get the
 # tool_name (for PreToolUse) and pass it as a note to the daemon.
@@ -73,6 +77,29 @@ project_name() {
     dir=$(json_field cwd)
     [ -z "$dir" ] && dir="$PWD"
     basename "$dir" | tr '_-' '  '
+}
+
+# For a Bash PostToolUse that ran tests, print "pass" or "fail" (else nothing).
+# The payload has no exit code, so this reads the output: any failure marker
+# wins, otherwise a pass marker counts as a pass.
+test_outcome() {
+    [ -z "$stdin_json" ] && return
+    printf '%s' "$stdin_json" | python3 -c "
+import json, re, sys
+try:
+    obj = json.loads(sys.stdin.read())
+    cmd = obj.get('tool_input', {}).get('command', '') or ''
+    if not re.search(r'pytest|unittest|(npm|yarn|pnpm|bun) (run )?test|go test|cargo test|jest|vitest|swift test|make test|rspec', cmd):
+        sys.exit()
+    resp = obj.get('tool_response', {}) or {}
+    out = resp if isinstance(resp, str) else ' '.join(str(resp.get(k, '')) for k in ('stdout', 'stderr'))
+    if re.search(r'\\bFAIL(ED|URES?)?\\b|\\b[1-9][0-9]* (failed|failing)\\b|^not ok|Traceback|panicked', out, re.M):
+        print('fail')
+    elif re.search(r'\\bOK\\b|\\bpassed\\b|\\bpassing\\b|^ok\\b|test result: ok|\\bPASS\\b', out, re.M):
+        print('pass')
+except Exception:
+    pass
+" 2>/dev/null
 }
 
 # Derive a progress bar from a TodoWrite payload: completed / total todos.
@@ -135,6 +162,13 @@ case "$action" in
         post_state coding "$tool"
         # TodoWrite drives a live progress bar from the todo list.
         [ "$tool" = "TodoWrite" ] && post_todo_progress
+        # A test run: celebrate a pass, wince at a failure.
+        if [ "$tool" = "Bash" ]; then
+            case "$(test_outcome)" in
+                pass) post_state happy tests ;;
+                fail) post_state alert tests ;;
+            esac
+        fi
         # Announce when this session opens a pull request.
         if [ "$tool" = "Bash" ]; then
             case "$(json_field command)" in
@@ -163,11 +197,18 @@ case "$action" in
         post_event '{"kind":"agents_reset"}'
         post_event '{"kind":"progress","clear":true}'
         ;;
+    compact)
+        # Context is about to be compacted: Clawd squashes a pile of papers.
+        post_event '{"kind":"play","name":"compact"}'
+        ;;
+    session-end)
+        post_event '{"kind":"play","name":"goodbye"}'
+        ;;
     touch)
         curl -s --max-time "$TIMEOUT" -XPOST "$DAEMON_URL/touch" >/dev/null 2>&1 || true
         ;;
     *)
-        echo "Usage: clawd-hook prompt|pre-tool|post-tool|alert|stop|subagent|session-start|touch" >&2
+        echo "Usage: clawd-hook prompt|pre-tool|post-tool|alert|stop|subagent|session-start|session-end|compact|touch" >&2
         exit 64
         ;;
 esac

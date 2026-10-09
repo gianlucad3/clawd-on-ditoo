@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>compact</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #E8E5E0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .info {
+    color: #999;
+    font-size: 11px;
+    margin-top: 10px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="480"></canvas>
+<div class="info" id="info">clawd animation template</div>
+
+<script>
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ─── PALETTE ─────────────────────────────────────────────────
+// The target is a 16×16 LED panel: black is "LED off". Keep the background
+// dark and use bright colors for the subject only. Hex colors only.
+const PALETTE = {
+  background: { bg: '#000000', ground: '#2A2420' },
+  stars:      { bright: '#8A8A8A', dim: '#2E2E2E' },
+  clawd:      { body: '#CD6E58', eye: '#000000', lid: '#7A3A2C' },
+  ui:         { white: '#FFFFFF', mark: '#F2C463' },
+  fx:         { heart: '#F06090', blush: '#FAC8D8' }
+  // Add new prop colors here, e.g.: rain: { drop: '#88BBDD' }
+};
+
+// ─── PIXEL GRID ──────────────────────────────────────────────
+const GW = 16;
+const GH = 16;
+const PX = cv.width / GW;  // 30 in the browser preview, 1 in export.mjs
+
+// Every drawing call goes through px(). Off-grid cells are skipped, so
+// sprites can slide in from outside the screen.
+function px(gx, gy, col, alpha = 1) {
+  gx = Math.round(gx);
+  gy = Math.round(gy);
+  if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) return;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = col;
+  ctx.fillRect(gx * PX, gy * PX, PX, PX);
+  ctx.globalAlpha = 1;
+}
+
+function drawSprite(sprite, ox, oy, colors, alpha = 1) {
+  for (let r = 0; r < sprite.length; r++) {
+    for (let c = 0; c < sprite[r].length; c++) {
+      const key = sprite[r][c];
+      if (key && colors[key]) px(ox + c, oy + r, colors[key], alpha);
+    }
+  }
+}
+
+// ─── SPRITES ─────────────────────────────────────────────────
+
+// Clawd, full size (14×8): fills most of the screen width. Use it when
+// Clawd is the whole scene (emotions, reactions).
+const CLAWD = {
+  width: 14, height: 8,
+  data: [
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,0,1,0,0,1,0,1,0,0,0],
+    [0,0,0,1,0,1,0,0,1,0,1,0,0,0]
+  ],
+  anchors: {
+    eyeLeft:   { x: 4,  y: 1 },
+    eyeRight:  { x: 9,  y: 1 },
+    handLeft:  { x: 1,  y: 2 },
+    handRight: { x: 12, y: 2 },
+    top:       { x: 7,  y: 0 }
+  }
+};
+
+// Clawd, mini (10×5): leaves room for a prop or scenery next to it.
+const CLAWD_MINI = {
+  width: 10, height: 5,
+  data: [
+    [0,0,1,1,1,1,1,1,0,0],
+    [0,0,1,1,1,1,1,1,0,0],
+    [1,1,1,1,1,1,1,1,1,1],
+    [0,0,1,1,1,1,1,1,0,0],
+    [0,0,1,0,1,1,0,1,0,0]
+  ],
+  anchors: {
+    eyeLeft:   { x: 3, y: 1 },
+    eyeRight:  { x: 6, y: 1 },
+    handLeft:  { x: 0, y: 2 },
+    handRight: { x: 9, y: 2 },
+    top:       { x: 4, y: 0 }
+  }
+};
+
+// Eye variants. Glances move only the inner eye so neither eye lands on the
+// head's outline (which reads as a notch, not a look).
+//   eyes:  [left dx, left dy, right dx, right dy]
+//   blink: no eyes at all; use for 1-2 frames only (longer reads as a blank face)
+//   closed / happy: drawn as lids by drawClawd (a dark line / a ^ shape)
+const EYES = {
+  forward:    [0, 0, 0, 0],
+  look_right: [1, 0, 0, 0],
+  look_left:  [0, 0, -1, 0],
+  look_down:  [0, 1, 0, 1],
+  look_up:    [0, -1, 0, -1],  // eyes on the top edge: reads as looking up, use briefly
+  blink:      null,
+  closed:     'closed',
+  happy:      'happy'
+};
+
+// Tiny marks. There is no room for text on 16×16, so these replace
+// speech bubbles: "!" for discovery, a heart for love, and so on.
+const ICONS = {
+  heart:     [[0,1,0,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]],  // 5×4
+  heartTiny: [[1,0,1],[0,1,0]],                                    // 3×2
+  exclaim:   [[1],[1],[0],[1]],                                    // 1×4
+  question:  [[1,1,1],[0,0,1],[0,1,0],[0,0,0],[0,1,0]],            // 3×5
+  check:     [[0,0,0,0,1],[0,0,0,1,0],[1,0,1,0,0],[0,1,0,0,0]],    // 5×4
+  sparkle:   [[0,1,0],[1,1,1],[0,1,0]],                            // 3×3
+  note:      [[0,1,1],[0,1,0],[1,1,0],[1,1,0]],                    // 3×4
+  z:         [[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],            // 3×5 (big z)
+  zSmall:    [[1,1,1],[0,0,1],[0,1,0],[1,1,1]],                    // 3×4 (small z)
+  sweat:     [[1],[1]]                                             // 1×2
+};
+
+// ─── BACKGROUND ──────────────────────────────────────────────
+
+// Single-pixel stars, kept to the side columns so they never sit in the
+// icon area above Clawd's head (columns 3-12). Optional: skip drawStars()
+// for indoor scenes, or pass cells to hide while something is drawn there.
+const STARS = [[0,1],[1,4],[15,0],[14,3]];
+
+function drawBg() {
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = PALETTE.background.bg;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+}
+
+function drawGround(row = 15) {
+  for (let x = 0; x < GW; x++) px(x, row, PALETTE.background.ground);
+}
+
+// Twinkle is tied to loop progress (f / TOTAL) so the last frame flows into the first.
+// hide: optional list of [x, y] stars to skip this frame
+function drawStars(f, hide = []) {
+  for (const [x, y] of STARS) {
+    if (hide.some(([hx, hy]) => hx === x && hy === y)) continue;
+    const tw = Math.sin((f / TOTAL) * Math.PI * 4 + x * 1.3 + y * 0.7);
+    px(x, y, tw > 0.5 ? PALETTE.stars.bright : PALETTE.stars.dim);
+  }
+}
+
+// ─── DRAW FUNCTIONS ──────────────────────────────────────────
+
+// opts:
+//   eyes:   'forward' | 'look_right' | 'look_left' | 'look_down' | 'look_up'
+//           | 'blink' | 'closed' | 'happy'
+//   mini:   use the 10×5 body
+//   squash: exhale pose — body one row lower with shorter legs, feet stay put
+//           (use breathe(f) for a looping breath)
+//   blush:  0-1, drawn on top of the body so draw order never hides it
+function drawClawd(ox, oy, opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  const legRow = s.height - 1;
+  // squash: everything above the last leg row moves down one; that leg row is dropped
+  const yOf = r => (opts.squash && r < legRow ? r + 1 : r);
+  for (let r = 0; r < s.height; r++) {
+    if (opts.squash && r === legRow - 1 && !opts.mini) continue;
+    for (let c = 0; c < s.width; c++) {
+      if (s.data[r][c] === 1) px(ox + c, oy + yOf(r), PALETTE.clawd.body);
+    }
+  }
+  const dy = opts.squash ? 1 : 0;
+  const el = s.anchors.eyeLeft, er = s.anchors.eyeRight;
+  const ev = EYES[opts.eyes || 'forward'];
+  if (ev === 'closed') {
+    for (const e of [el, er]) {
+      px(ox + e.x - 1, oy + e.y + dy, PALETTE.clawd.lid);
+      px(ox + e.x, oy + e.y + dy, PALETTE.clawd.lid);
+    }
+  } else if (ev === 'happy') {
+    for (const e of [el, er]) {  // ^ shape
+      px(ox + e.x, oy + e.y + dy, PALETTE.clawd.lid);
+      px(ox + e.x - 1, oy + e.y + 1 + dy, PALETTE.clawd.lid);
+      px(ox + e.x + 1, oy + e.y + 1 + dy, PALETTE.clawd.lid);
+    }
+  } else if (ev) {
+    px(ox + el.x + ev[0], oy + el.y + ev[1] + dy, PALETTE.clawd.eye);
+    px(ox + er.x + ev[2], oy + er.y + ev[3] + dy, PALETTE.clawd.eye);
+  }
+  if (opts.blush) drawBlush(ox, oy + dy, opts.blush, opts);
+}
+
+// Looping breath: true on exhale frames. period in frames; pick a divisor of TOTAL
+function breathe(f, period = 16) {
+  return (f % period) >= period / 2;
+}
+
+// Claw poses, drawn after drawClawd. Pixels stay inside the screen when Clawd
+// stands at the standard spot (full: x=1, mini: any x where the body fits).
+//   'wave'  : claw straight up, 2 cells (cheering, alarm, hello)
+//   'raise' : claw up 1 cell (thinking, "hmm", claw to chin)
+//   'down'  : claw reaching down, 2 cells (typing, pressing, picking up)
+//   'out'   : diagonal up and out, 2 cells (big celebration; can reach the edge)
+function drawClaw(ox, oy, side = 'right', pose = 'wave', opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  const h = side === 'right' ? s.anchors.handRight : s.anchors.handLeft;
+  const dir = side === 'right' ? 1 : -1;
+  const x = ox + h.x, y = oy + h.y + (opts.squash ? 1 : 0);
+  const body = PALETTE.clawd.body;
+  if (pose === 'wave') { px(x, y - 1, body); px(x, y - 2, body); }
+  else if (pose === 'raise') { px(x, y - 1, body); }
+  else if (pose === 'down') { px(x, y + 2, body); px(x, y + 3, body); }
+  else if (pose === 'out') { px(x + dir, y - 1, body); px(x + dir * 2, y - 2, body); }
+}
+
+// Kept for older animations: the original diagonal raised claw
+function drawWave(ox, oy, side = 'right', opts = {}) {
+  drawClaw(ox, oy, side, 'out', opts);
+}
+
+// Blush: one pink pixel below and outside each eye. Draw after drawClawd,
+// or pass { blush } to drawClawd instead.
+function drawBlush(ox, oy, alpha, opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  px(ox + s.anchors.eyeLeft.x - 1, oy + s.anchors.eyeLeft.y + 1, PALETTE.fx.blush, alpha);
+  px(ox + s.anchors.eyeRight.x + 1, oy + s.anchors.eyeRight.y + 1, PALETTE.fx.blush, alpha);
+}
+
+function drawIcon(name, x, y, col, alpha = 1) {
+  const icon = ICONS[name];
+  for (let r = 0; r < icon.length; r++) {
+    for (let c = 0; c < icon[r].length; c++) {
+      if (icon[r][c] === 1) px(x + c, y + r, col, alpha);
+    }
+  }
+}
+
+// ─── PARTICLE SYSTEM ─────────────────────────────────────────
+// Seeded RNG so every loop (and the device export) plays identically.
+// Never use Math.random() in an animation.
+let seed = 1;
+function rand() {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+}
+
+let particles = [];
+
+// A particle pops up, drifts (default: up and slightly sideways, then falls back
+// under gravity) and disappears after `life` frames. Defaults: life 10 frames,
+// rising ~0.3-0.8 cells/frame, gravity 0.08. Override any of them in opts.
+// Plan bursts so every particle dies before the loop seam.
+function addParticle(x, y, col, opts = {}) {
+  particles.push({
+    x, y, col,
+    vx: opts.vx ?? (rand() - 0.5) * 0.6,
+    vy: opts.vy ?? -rand() * 0.5 - 0.3,
+    gravity: opts.gravity ?? 0.08,
+    life: opts.life ?? 10
+  });
+}
+
+function tickParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.life -= 1;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    px(p.x, p.y, p.col);
+  }
+}
+
+function resetLoop() {
+  particles = [];
+  seed = 1;
+}
+
+// ─── EASING FUNCTIONS ────────────────────────────────────────
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3) / 2; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ─── PHASES ──────────────────────────────────────────────────
+// Phases are lists of [name, frames]; the frame counts must add up to TOTAL.
+// phase(f, PHASES) -> { ph: name, i: frame within the phase, n: phase length,
+//                       pt: progress 0..1 (i / n) }
+function phase(f, phases) {
+  let start = 0;
+  for (const [name, n] of phases) {
+    if (f < start + n) return { ph: name, i: f - start, n, pt: (f - start) / n };
+    start += n;
+  }
+  const [name, n] = phases[phases.length - 1];
+  return { ph: name, i: n - 1, n, pt: (n - 1) / n };
+}
+
+// === YOUR ANIMATION HERE ====================================
+PALETTE.paper1 = '#D8D0C0';
+PALETTE.paper2 = '#A8A8B0';
+PALETTE.cube = '#F2C463';
+PALETTE.flash = '#FFFFFF';
+
+const NAME = 'compact';
+const FPS = 8;
+const DUR = 3;
+const TOTAL = FPS * DUR; // 24
+const PHASES = [['drop', 3], ['wobble', 3], ['squash', 6], ['flash', 1], ['vanish', 3], ['happy', 4], ['end', 4]];
+
+function render(f) {
+  drawBg();
+
+  const ox = 1, oy = 7;
+  const { ph, i, n, pt } = phase(f, PHASES);
+
+  // --- Determine Clawd state ---
+  let eyes = 'forward';
+  let blush = 0;
+  let squash = false;
+  let showClaws = false;
+
+  if (ph === 'squash') {
+    showClaws = true;
+  } else if (ph === 'flash' || ph === 'vanish' || ph === 'happy') {
+    eyes = 'happy';
+  }
+
+  drawClawd(ox, oy, { eyes, blush, squash });
+  if (showClaws) {
+    drawClaw(ox, oy, 'left', 'wave', { squash });
+    drawClaw(ox, oy, 'right', 'wave', { squash });
+  }
+
+  // --- Paper Stack Logic ---
+  // Base rows (relative to stack top y=0 in 'final' position)
+  // Stack final position: rows 0-5 (cols 5-10).
+  // We want it to end at rows 0-5 (so bottom is row 5, 1 gap to head at 7).
+  // Wait, head is row 7. Gap is row 6. So stack bottom must be row 5.
+  // My phase suggestion said "rows 0-5". This fits.
+  
+  // Sheet definitions: {w, dx, color}
+  // 6 sheets.
+  const sheets = [
+    { w: 4, dx: 0, c: PALETTE.paper1 }, // Bottom sheet, left aligned
+    { w: 5, dx: 1, c: PALETTE.paper2 },
+    { w: 6, dx: 0, c: PALETTE.paper1 },
+    { w: 5, dx: 1, c: PALETTE.paper2 },
+    { w: 4, dx: 2, c: PALETTE.paper1 },
+    { w: 5, dx: 0, c: PALETTE.paper2 }  // Top sheet
+  ];
+
+  // Drop phase: enters from top.
+  // Final position starts at y=0. 
+  // At frame 0 of drop, it should be off-screen (y=-5 or so).
+  // It drops 2 rows per frame? 3 frames to cover 6 rows?
+  // Or maybe it starts at y=-6 and moves down.
+  let dropOffset = 0;
+  if (ph === 'drop') {
+    // 0 -> -4, 1 -> -2, 2 -> 0
+    dropOffset = -4 + (i * 2);
+  }
+
+  // Wobble phase: sway 1 col
+  let wobbleDx = 0;
+  if (ph === 'wobble') {
+    if (i === 0) wobbleDx = -1;
+    if (i === 2) wobbleDx = 1;
+  }
+
+  // Squash phase: compress from top.
+  // 6 sheets become a 2x2 cube.
+  // We animate rows disappearing.
+  // i=0: 6 sheets
+  // i=1: 5 sheets
+  // i=2: 4 sheets
+  // i=3: 3 sheets
+  // i=4: 2 sheets (merged visually?)
+  // i=5: 1 cube row?
+  
+  let visibleSheetsCount = 6;
+  let isCube = false;
+  let cubeY = 0;
+  
+  if (ph === 'squash') {
+    // Compress over 6 frames.
+    // Sheets count goes 6, 5, 4, 3, 2, 1 (then cube)
+    visibleSheetsCount = 6 - i;
+    if (visibleSheetsCount <= 1) {
+      visibleSheetsCount = 0; // Hide papers, show cube
+      isCube = true;
+      cubeY = 4; // Cube is 2x2 at rows 4-5? 
+      // "until it's a 2x2 cube ... at cols 7-8, rows 4-5"
+      // If we show a 2x2 cube, it occupies rows 4 and 5.
+    }
+  } else if (ph === 'happy' || ph === 'end') {
+    visibleSheetsCount = 0;  // the papers are gone for good
+  } else if (ph === 'flash' || ph === 'vanish') {
+    isCube = true;
+    cubeY = 4;
+    visibleSheetsCount = 0;
+  }
+
+  // --- Draw Papers ---
+  if (visibleSheetsCount > 0) {
+    // Draw from bottom up? Or top down?
+    // The stack "compresses downward". Top sheets disappear first?
+    // "rows disappear from the top, the remaining sheets merge"
+    // If top disappears, the visible ones are the bottom ones.
+    // But we want them to look like they are being squashed into place.
+    // Let's say we draw the bottom `visibleSheetsCount` sheets.
+    // And shift them down? No, they are already at bottom.
+    // But if the top ones vanish, the pile height reduces.
+    // The prompt says "compresses downward".
+    // If the stack is at rows 0-5, and we remove top rows, it becomes rows 3-5?
+    // But the final cube is at rows 4-5.
+    // So effectively the stack shrinks from top.
+    
+    // However, to make it look like a compression, maybe the remaining sheets slide down?
+    // Prompt: "remaining sheets merge".
+    // Let's just draw the bottom N sheets at their original positions.
+    // The "merge" effect is implied by the disappearance of the top ones.
+    
+    for (let s = 0; s < visibleSheetsCount; s++) {
+      const sheet = sheets[s]; // s=0 is bottom, s=5 is top
+      // We want to keep bottom sheets.
+      // If visibleSheetsCount is 6, we draw s=0..5.
+      // If visibleSheetsCount is 5, we draw s=0..4.
+      
+      const y = 5 - s; // s=0 is the bottom sheet, on row 5
+      const finalY = y + dropOffset;
+      
+      // Only draw if on screen
+      if (finalY >= 0 && finalY <= 5) {
+        const xStart = 5 + sheet.dx + wobbleDx;
+        for (let c = 0; c < sheet.w; c++) {
+          px(xStart + c, finalY, sheet.c);
+        }
+      }
+    }
+  }
+
+  // --- Draw Cube ---
+  if (isCube) {
+    let color = PALETTE.cube;
+    let alpha = 1;
+    let w = 2;
+    let h = 2;
+    let cx = 7;
+    let cy = cubeY;
+
+    if (ph === 'flash') {
+      color = PALETTE.flash;
+    } else if (ph === 'vanish') {
+      if (i === 0) {
+        // 1st frame of vanish: normal cube
+        color = PALETTE.cube;
+      } else if (i === 1) {
+        // shrinks to single cell
+        w = 1;
+        h = 1;
+        cx = 7; // center-ish? cols 7-8 -> center 7.5. Pick 7 or 8. Let's pick 7.
+        cy = 4; // top of cube. If shrinking, maybe center? 
+        // "shrinks to a single amber cell"
+      } else if (i === 2) {
+        // vanishes (alpha 0 or don't draw)
+        w = 0;
+      }
+    }
+
+    if (w > 0) {
+      for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+          px(cx + c, cy + r, color, alpha);
+        }
+      }
+    }
+  }
+
+  tickParticles();
+}
+
+// ─── LOOP (browser preview only; export.mjs calls resetLoop/render directly) ──
+let startTime = null;
+let lastFrame = -1;
+
+function loop(ts) {
+  if (startTime === null) startTime = ts;
+  const frame = Math.floor((ts - startTime) / 1000 * FPS) % TOTAL;
+
+  // Step through every frame in order so particle state matches the export
+  while (lastFrame !== frame) {
+    lastFrame = (lastFrame + 1) % TOTAL;
+    if (lastFrame === 0) resetLoop();
+    render(lastFrame);
+  }
+
+  document.getElementById('info').textContent =
+    `${NAME} - frame ${frame + 1} / ${TOTAL}  |  ${FPS} fps, ${DUR}s loop`;
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

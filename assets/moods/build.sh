@@ -1,13 +1,18 @@
 #!/bin/sh
-# Export every mood animation here to the daemon's mood directory.
-# Usage: assets/moods/build.sh [out_dir]   (default ~/.clawd/moods)
-# Needs Node. Restart the daemon afterwards; it loads moods only at startup.
+# Export the mood animations to the daemon's mood directory, and the one-shot
+# scenes (assets/scenes: commit, push, compact, goodbye) to its asset directory.
+# Usage: assets/moods/build.sh [moods_dir] [assets_dir]
+#        (default ~/.clawd/moods and ~/.clawd/assets)
+# Needs Node. Restart the daemon afterwards; it loads both only at startup.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
-out=${1:-$HOME/.clawd/moods}
+moods=${1:-$HOME/.clawd/moods}
+assets=${2:-$HOME/.clawd/assets}
 export_mjs="$here/../../.claude/skills/clawd-animation/references/export.mjs"
-mkdir -p "$out"
+mkdir -p "$moods" "$assets"
 for html in "$here"/*.html; do
-  name=$(basename "$html" .html)
-  node "$export_mjs" "$html" "$out/$name.json" --no-ground
+  node "$export_mjs" "$html" "$moods/$(basename "$html" .html).json" --no-ground
+done
+for html in "$here"/../scenes/*.html; do
+  node "$export_mjs" "$html" "$assets/$(basename "$html" .html).json" --no-ground
 done

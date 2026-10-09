@@ -536,6 +536,8 @@ def cmd_install_hooks(args) -> int:
         "Stop": "stop",
         "SubagentStop": "subagent",
         "SessionStart": "session-start",
+        "SessionEnd": "session-end",
+        "PreCompact": "compact",
     }
 
     for event, verb in HOOK_EVENTS.items():
@@ -554,7 +556,8 @@ def cmd_install_hooks(args) -> int:
     settings_path.write_text(json.dumps(existing, indent=2) + "\n")
     print(f"installed hooks into {settings_path}")
     print("clawd will now react to UserPromptSubmit / PreToolUse / PostToolUse / Notification / Stop")
-    print("  + SubagentStop (agents-home tally) and SessionStart (reset); TodoWrite drives a progress bar.")
+    print("  + SubagentStop (agents-home tally), SessionStart (reset), SessionEnd (goodbye) and")
+    print("  PreCompact (compact); TodoWrite drives a progress bar and test runs show pass/fail.")
     print()
     print("To start the daemon (in another terminal):")
     print(f"  {ROOT}/bin/clawd start --mac <DITOO_LIGHT_MAC>")

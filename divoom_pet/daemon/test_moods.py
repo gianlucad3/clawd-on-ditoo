@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from divoom_pet.daemon.moods import VARIANT_EVERY_S, MoodSet, describe, moods_from_dir
+from divoom_pet.daemon.moods import VARIANT_EVERY_S, MoodSet, describe, moods_from_dir, variant_for
 from divoom_pet.sprites import State
 
 
@@ -48,6 +48,23 @@ class MoodSetTests(unittest.TestCase):
         self.assertEqual(_color(m.next_loop(now=VARIANT_EVERY_S)), [(5, 5, 5), (9, 9, 9)])
         self.assertEqual(_color(m.next_loop(now=VARIANT_EVERY_S + 1)), [(9, 9, 9)])
 
+
+    def test_keyed_variant_falls_back_to_main(self):
+        main = [([(9, 9, 9)] * 256, 125)]
+        bash = [([(1, 1, 1)] * 256, 125)]
+        m = MoodSet(main=main, variants={"bash": bash})
+        self.assertEqual(_color(m.keyed("bash")), [(1, 1, 1)])
+        self.assertEqual(_color(m.keyed("read")), [(9, 9, 9)])   # no read variant
+        self.assertEqual(_color(m.keyed("")), [(9, 9, 9)])
+
+    def test_variant_for_notes(self):
+        self.assertEqual(variant_for(State.TOOL_USE, "Grep"), "read")
+        self.assertEqual(variant_for(State.TOOL_USE, "mcp__x"), "")
+        self.assertEqual(variant_for(State.ALERT, "Claude needs your permission to use Bash"), "permission")
+        self.assertEqual(variant_for(State.ALERT, "Claude is waiting for your input"), "waiting")
+        self.assertEqual(variant_for(State.ALERT, "tests"), "tests")
+        self.assertEqual(variant_for(State.HAPPY, "tests"), "tests")
+        self.assertEqual(variant_for(State.HAPPY, "done"), "")
 
 if __name__ == "__main__":
     unittest.main()

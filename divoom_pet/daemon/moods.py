@@ -11,6 +11,13 @@ Files in the moods directory (default ~/.clawd/moods) are named after a mood:
                            rubber-duck / whiteboard / reading specials)
 
 Valid mood names are the State values (idle, thinking, happy, …).
+
+tool_use, alert and happy variants are picked by the event's note instead of
+rotating (see variant_for): tool_use.bash.json plays for Bash,
+tool_use.edit.json for Edit/Write, and so on (TOOL_VARIANTS); alert.permission
+for a permission prompt, alert.waiting when Claude waits for input, and
+alert.tests / happy.tests when a test run fails / passes. Without a matching
+variant these moods play their main file.
 """
 
 from __future__ import annotations
@@ -29,6 +36,33 @@ log = logging.getLogger("moods")
 
 # How often a variant leads a mood that also has a main loop.
 VARIANT_EVERY_S = 60.0
+
+# Claude Code tool name -> tool_use variant name.
+TOOL_VARIANTS = {
+    "Bash": "bash", "BashOutput": "bash", "KillShell": "bash",
+    "Edit": "edit", "MultiEdit": "edit", "Write": "edit", "NotebookEdit": "edit",
+    "Read": "read", "Grep": "read", "Glob": "read", "LS": "read",
+    "WebFetch": "web", "WebSearch": "web",
+    "Task": "task", "Agent": "task",
+}
+
+# Moods whose variant is chosen by the event note rather than rotated.
+KEYED_STATES = (State.TOOL_USE, State.ALERT, State.HAPPY)
+
+
+def variant_for(state: State, note: str) -> str:
+    """The variant name a keyed mood should play for an event note ('' = main)."""
+    if state == State.TOOL_USE:
+        return TOOL_VARIANTS.get(note, "")
+    n = (note or "").lower()
+    if n == "tests":
+        return "tests"
+    if state == State.ALERT:
+        if "permission" in n:
+            return "permission"
+        if "waiting" in n:
+            return "waiting"
+    return ""
 
 
 @dataclass
@@ -56,6 +90,10 @@ class MoodSet:
             self._last_variant_at = now
             return self.variants[self._bag.draw()] + self.main
         return self.main
+
+    def keyed(self, variant: str) -> List:
+        """The loop for a keyed mood (see variant_for): that variant, else main."""
+        return self.variants.get(variant) or self.main or []
 
 
 def moods_from_dir(directory: Path) -> Dict[State, MoodSet]:

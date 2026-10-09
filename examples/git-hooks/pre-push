@@ -1,0 +1,7 @@
+#!/bin/bash
+# Clawd launches a rocket when you push. Install into a repo:
+#   cp examples/git-hooks/pre-push .git/hooks/ && chmod +x .git/hooks/pre-push
+# Set CLAWD_BIN if your checkout lives elsewhere. Never blocks the push.
+CLAWD="${CLAWD_BIN:-$HOME/code/divoom-pet/bin/clawd}"
+"$CLAWD" notify play push >/dev/null 2>&1 || true
+exit 0

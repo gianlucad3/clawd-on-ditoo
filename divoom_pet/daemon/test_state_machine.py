@@ -113,6 +113,17 @@ class MoodOverrideTests(unittest.TestCase):
         self.assertTrue(hasattr(c.animation_for(State.ALERT)[0][0], "rows"))
 
 
+    def test_tool_use_follows_the_running_tool(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "tool_use", color=(9, 9, 9))
+            self._write(d, "tool_use.bash", color=(1, 1, 1))
+            c = _controller()
+            c.moods = moods_from_dir(Path(d))
+        c.set_state(State.TOOL_USE, note="Bash")
+        self.assertEqual(compose(c.animation_for(State.TOOL_USE)[0][0])[0], (1, 1, 1))
+        c.set_state(State.TOOL_USE, note="Read")  # same state, new tool
+        self.assertEqual(compose(c.animation_for(State.TOOL_USE)[0][0])[0], (9, 9, 9))
+
 class TimeoutLoopTests(unittest.TestCase):
     """Timed states end on the loop boundary nearest their timeout."""
 

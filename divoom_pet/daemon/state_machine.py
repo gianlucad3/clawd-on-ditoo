@@ -20,7 +20,7 @@ from divoom_pet.sprites import DEFAULT_IDLE, IdleOpts, State, animation_for_stat
 from divoom_pet.voice.sounds import STATE_CHIRP, STATE_SPEAK, SoundPlayer
 
 from .bridge import DitooBridge
-from .moods import MoodSet
+from .moods import KEYED_STATES, MoodSet, variant_for
 
 log = logging.getLogger("state")
 
@@ -60,6 +60,7 @@ class PetController:
     moods: Dict[State, MoodSet] = field(default_factory=dict)
     _state: State = State.IDLE
     _state_started_at: float = field(default_factory=time.time)
+    _note: str = ""  # note of the last set_state (tool name, alert message…)
     _last_activity_at: float = field(default_factory=time.time)
     # Persistent data overlays (progress bar, count badge…), keyed by name and
     # swapped immutably. A one-shot `_takeover` animation, when queued, plays
@@ -95,6 +96,7 @@ class PetController:
 
     def set_state(self, state: State, note: str = "") -> None:
         with self._lock:
+            self._note = note
             if state == self._state and state != State.HAPPY and state != State.ALERT:
                 # Already in this state; ignore noisy re-entries (but allow re-triggers
                 # for one-shot reactions like HAPPY / ALERT).
@@ -243,7 +245,10 @@ class PetController:
         """One loop of (frame-or-sprite, duration_ms) for `state`: the mood
         override when there is one, else the built-in sprites."""
         override = self.moods.get(state)
-        loop = override.next_loop() if override else None
+        if override and state in KEYED_STATES:
+            loop = override.keyed(variant_for(state, self._note))
+        else:
+            loop = override.next_loop() if override else None
         return loop or animation_for_state(state, idle_opts)
 
     def _play_frames(self, frames: List) -> None:
