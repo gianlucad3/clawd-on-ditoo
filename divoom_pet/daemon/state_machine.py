@@ -20,6 +20,7 @@ from divoom_pet.sprites import DEFAULT_IDLE, IdleOpts, State, animation_for_stat
 from divoom_pet.voice.sounds import STATE_CHIRP, STATE_SPEAK, SoundPlayer
 
 from .bridge import DitooBridge
+from .moods import MoodSet
 
 log = logging.getLogger("state")
 
@@ -53,6 +54,10 @@ class PetController:
     idle_to_bored: float = IDLE_TO_BORED_AFTER
     idle_to_sleep: float = IDLE_TO_SLEEP_AFTER
     idle_opts: IdleOpts = field(default_factory=lambda: DEFAULT_IDLE)
+    agent_badge: bool = True  # show the finished-subagent tally as a corner badge
+    # Per-mood manifest animations (flat 16×16 frames) that replace the built-in
+    # sprite animation for that state; see moods.py. Empty = all built-in.
+    moods: Dict[State, MoodSet] = field(default_factory=dict)
     _state: State = State.IDLE
     _state_started_at: float = field(default_factory=time.time)
     _last_activity_at: float = field(default_factory=time.time)
@@ -185,7 +190,8 @@ class PetController:
         with self._lock:
             self._agents_home += 1
             count = self._agents_home
-        self.set_overlay("badge", CountBadge(count=count, corner="tr", color=COLORS["yellow"]))
+        if self.agent_badge:
+            self.set_overlay("badge", CountBadge(count=count, corner="tr", color=COLORS["yellow"]))
         self.set_state(State.POKE, note="agent home")
         return count
 
@@ -208,7 +214,7 @@ class PetController:
             with self._lock:
                 current = self._state
                 idle_opts = self.idle_opts
-            anim = animation_for_state(current, idle_opts)
+            anim = self.animation_for(current, idle_opts)
             # Render the animation once, compositing live overlays per frame. After
             # it loops (uninterrupted) we re-check auto-transitions.
             interrupted = False
@@ -231,7 +237,14 @@ class PetController:
                     interrupted = True
                     break
             if not interrupted:
-                self._maybe_auto_transition()
+                self._maybe_auto_transition(sum(ms for _, ms in anim) / 1000.0)
+
+    def animation_for(self, state: State, idle_opts: IdleOpts = DEFAULT_IDLE) -> List:
+        """One loop of (frame-or-sprite, duration_ms) for `state`: the mood
+        override when there is one, else the built-in sprites."""
+        override = self.moods.get(state)
+        loop = override.next_loop() if override else None
+        return loop or animation_for_state(state, idle_opts)
 
     def _play_frames(self, frames: List) -> None:
         """Push a raw (frame, duration_ms) animation once, interruptible by any
@@ -248,7 +261,11 @@ class PetController:
                 self._state_changed.clear()
                 return  # interrupted — abandon the rest of this takeover
 
-    def _maybe_auto_transition(self) -> None:
+    def _maybe_auto_transition(self, loop_s: float = 0.0) -> None:
+        """Check timeouts after a full loop. `loop_s` is that loop's length: a
+        timed state also ends early when one more loop would overshoot its timeout
+        by more than it currently falls short, so a long one-shot mood (a 3 s
+        hatch against a 3.5 s timeout) plays once instead of twice."""
         with self._lock:
             now = time.time()
             current = self._state
@@ -257,7 +274,7 @@ class PetController:
 
             if current in AUTO_TIMEOUTS:
                 timeout, fallback = AUTO_TIMEOUTS[current]
-                if elapsed >= timeout:
+                if elapsed >= timeout or elapsed + loop_s - timeout > timeout - elapsed:
                     log.info("auto-transition: %s -> %s after %.1fs", current.value, fallback.value, elapsed)
                     self._state = fallback
                     self._state_started_at = now

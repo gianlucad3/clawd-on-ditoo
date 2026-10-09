@@ -46,12 +46,18 @@ def cmd_start(args) -> int:
     else:
         if args.mac:
             server_args += ["--mac", args.mac]
-        if args.channel:
+        if args.channel is not None:
             server_args += ["--channel", str(args.channel)]
     if args.no_sound:
         server_args.append("--no-sound")
     if args.no_ears:
         server_args.append("--no-ears")
+    if args.no_agent_badge:
+        server_args.append("--no-agent-badge")
+    if args.moods:
+        server_args += ["--moods", args.moods]
+    if args.no_moods:
+        server_args.append("--no-moods")
     if args.audio_device:
         server_args += ["--audio-device", args.audio_device]
     if args.verbose:
@@ -621,10 +627,17 @@ def main(argv=None) -> int:
 
     p_start = sub.add_parser("start", help="Start the pet daemon")
     p_start.add_argument("--mac", help="Ditoo BT MAC (pixel control)")
-    p_start.add_argument("--channel", type=int, default=2, help="RFCOMM channel (Ditoo Pro = 2)")
+    p_start.add_argument("--channel", type=int, default=None,
+                         help="RFCOMM channel (default: device.channel in ~/.clawd/config.json; Ditoo Pro = 2)")
     p_start.add_argument("--simulate", action="store_true", help="Skip Bluetooth; log frames only.")
     p_start.add_argument("--no-sound", action="store_true", help="Disable audio")
     p_start.add_argument("--no-ears", action="store_true", help="Disable clap detection")
+    p_start.add_argument("--no-agent-badge", action="store_true",
+                         help="Don't show the finished-subagent count badge (top-right corner)")
+    p_start.add_argument("--moods", default=None,
+                         help="Directory of mood manifests (idle.json, happy.json…) that replace the "
+                              "built-in animations (default ~/.clawd/moods)")
+    p_start.add_argument("--no-moods", action="store_true", help="Ignore mood manifests; use built-in animations")
     p_start.add_argument("--audio-device", default=None, help="Output device for sounds (default DitooPro)")
     p_start.add_argument("--foreground", action="store_true", help="Run in foreground (default: background)")
     p_start.add_argument("-v", "--verbose", action="store_true")

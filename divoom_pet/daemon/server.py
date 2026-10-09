@@ -31,7 +31,7 @@ from typing import List, Optional
 
 from divoom_pet.config import CONFIG_PATH, Config
 from divoom_pet.render import COLORS, CountBadge, ProgressBar, SessionBar, banner, compose, parse_color
-from divoom_pet.render.assets import AssetLibrary
+from divoom_pet.render.assets import MOODS_DIR, AssetLibrary
 from divoom_pet.render.clock import clock_takeover
 from divoom_pet.render.effects import EFFECTS
 from divoom_pet.sprites import IdleOpts, State
@@ -45,6 +45,7 @@ from .sessions import VALID_STATES, SessionRegistry, session_state_for_mood
 
 from .bridge import DitooBridge, find_bundled_bridge
 from .ears import Ears, find_ears_binary
+from .moods import describe as describe_moods, moods_from_dir
 from .state_machine import PetController
 from divoom_pet.voice.sounds import SoundPlayer
 
@@ -433,6 +434,12 @@ def main(argv=None) -> int:
     parser.add_argument("--simulate", action="store_true", help="Do not connect Bluetooth; log frames only.")
     parser.add_argument("--no-sound", action="store_true", help="Disable all audio")
     parser.add_argument("--no-ears", action="store_true", help="Disable clap detection")
+    parser.add_argument("--no-agent-badge", action="store_true",
+                        help="Don't show the finished-subagent count badge (top-right corner)")
+    parser.add_argument("--moods", default=None,
+                        help="Directory of mood manifests (idle.json, happy.json…) that replace the "
+                             "built-in animations (default ~/.clawd/moods)")
+    parser.add_argument("--no-moods", action="store_true", help="Ignore mood manifests; use built-in animations")
     parser.add_argument("--audio-device", default=None, help="Output device substring for sounds")
     parser.add_argument("--clap-floor", type=float, default=None, help="Clap detector RMS floor")
     parser.add_argument("--clap-rise", type=float, default=None, help="Clap detector rise factor")
@@ -463,7 +470,11 @@ def main(argv=None) -> int:
         idle_to_bored=cfg.sleep.idle_to_bored_seconds,
         idle_to_sleep=cfg.sleep.idle_to_sleep_seconds,
         idle_opts=_idle_opts_from(cfg),
+        agent_badge=not args.no_agent_badge,
+        moods={} if args.no_moods else moods_from_dir(Path(args.moods) if args.moods else MOODS_DIR),
     )
+    if controller.moods:
+        log.info("mood overrides: %s", describe_moods(controller.moods))
 
     # Clap detection (optional). Single clap pokes; double clap toggles sleep.
     ears = None

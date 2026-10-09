@@ -21,6 +21,9 @@ Frame = List[RGB]
 Anim = List[Tuple[Frame, int]]
 
 ASSETS_DIR = Path.home() / ".clawd" / "assets"
+# Manifests named after a mood (idle.json, happy.json…) replace that mood's
+# built-in sprite animation; <mood>.<variant>.json adds variants. See daemon/moods.py.
+MOODS_DIR = Path.home() / ".clawd" / "moods"
 IMAGE_SUFFIXES = (".png", ".gif", ".jpg", ".jpeg", ".bmp", ".webp")
 DEFAULT_FRAME_MS = 120
 
