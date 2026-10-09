@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clawd - coding: reading the docs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #E8E5E0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .info {
+    color: #999;
+    font-size: 11px;
+    margin-top: 10px;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="480"></canvas>
+<div class="info" id="info">clawd animation template</div>
+
+<script>
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+// ─── PALETTE ─────────────────────────────────────────────────
+// The target is a 16×16 LED panel: black is "LED off". Keep the background
+// dark and use bright colors for the subject only. Hex colors only.
+const PALETTE = {
+  background: { bg: '#000000', ground: '#2A2420' },
+  stars:      { bright: '#8A8A8A', dim: '#2E2E2E' },
+  clawd:      { body: '#CD6E58', eye: '#000000', lid: '#7A3A2C' },
+  ui:         { white: '#FFFFFF', mark: '#F2C463' },
+  fx:         { heart: '#F06090', blush: '#FAC8D8' },
+  laptop:     { bezel: '#8A8E9C', screen: '#121628', deck: '#5A5E6A', key: '#C4C8D4' },
+  code:       { kw: '#E070C0', fn: '#6CA8F0', str: '#6CD48A', cursor: '#FFFFFF' },
+  book:       { cover: '#3464C8', page: '#D8CCA8', gutter: '#A0947A', text: '#5A4A3A' },
+  // Add new prop colors here, e.g.: rain: { drop: '#88BBDD' }
+};
+
+// ─── PIXEL GRID ──────────────────────────────────────────────
+const GW = 16;
+const GH = 16;
+const PX = cv.width / GW;  // 30 in the browser preview, 1 in export.mjs
+
+// Every drawing call goes through px(). Off-grid cells are skipped, so
+// sprites can slide in from outside the screen.
+function px(gx, gy, col, alpha = 1) {
+  gx = Math.round(gx);
+  gy = Math.round(gy);
+  if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) return;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = col;
+  ctx.fillRect(gx * PX, gy * PX, PX, PX);
+  ctx.globalAlpha = 1;
+}
+
+function drawSprite(sprite, ox, oy, colors, alpha = 1) {
+  for (let r = 0; r < sprite.length; r++) {
+    for (let c = 0; c < sprite[r].length; c++) {
+      const key = sprite[r][c];
+      if (key && colors[key]) px(ox + c, oy + r, colors[key], alpha);
+    }
+  }
+}
+
+// ─── SPRITES ─────────────────────────────────────────────────
+
+// Clawd, full size (14×8): fills most of the screen width. Use it when
+// Clawd is the whole scene (emotions, reactions).
+const CLAWD = {
+  width: 14, height: 8,
+  data: [
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,1,0,1,0,0,1,0,1,0,0,0],
+    [0,0,0,1,0,1,0,0,1,0,1,0,0,0]
+  ],
+  anchors: {
+    eyeLeft:   { x: 4,  y: 1 },
+    eyeRight:  { x: 9,  y: 1 },
+    handLeft:  { x: 1,  y: 2 },
+    handRight: { x: 12, y: 2 },
+    top:       { x: 7,  y: 0 }
+  }
+};
+
+// Clawd, mini (10×5): leaves room for a prop or scenery next to it.
+const CLAWD_MINI = {
+  width: 10, height: 5,
+  data: [
+    [0,0,1,1,1,1,1,1,0,0],
+    [0,0,1,1,1,1,1,1,0,0],
+    [1,1,1,1,1,1,1,1,1,1],
+    [0,0,1,1,1,1,1,1,0,0],
+    [0,0,1,0,1,1,0,1,0,0]
+  ],
+  anchors: {
+    eyeLeft:   { x: 3, y: 1 },
+    eyeRight:  { x: 6, y: 1 },
+    handLeft:  { x: 0, y: 2 },
+    handRight: { x: 9, y: 2 },
+    top:       { x: 4, y: 0 }
+  }
+};
+
+// Eye variants. Glances move only the inner eye so neither eye lands on the
+// head's outline (which reads as a notch, not a look).
+//   eyes:  [left dx, left dy, right dx, right dy]
+//   blink: no eyes at all; use for 1-2 frames only (longer reads as a blank face)
+//   closed / happy: drawn as lids by drawClawd (a dark line / a ^ shape)
+const EYES = {
+  forward:    [0, 0, 0, 0],
+  look_right: [1, 0, 0, 0],
+  look_left:  [0, 0, -1, 0],
+  look_down:  [0, 1, 0, 1],
+  look_up:    [0, -1, 0, -1],  // eyes on the top edge: reads as looking up, use briefly
+  blink:      null,
+  closed:     'closed',
+  happy:      'happy'
+};
+
+// Tiny marks. There is no room for text on 16×16, so these replace
+// speech bubbles: "!" for discovery, a heart for love, and so on.
+const ICONS = {
+  heart:     [[0,1,0,1,0],[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]],  // 5×4
+  heartTiny: [[1,0,1],[0,1,0]],                                    // 3×2
+  exclaim:   [[1],[1],[0],[1]],                                    // 1×4
+  question:  [[1,1,1],[0,0,1],[0,1,0],[0,0,0],[0,1,0]],            // 3×5
+  check:     [[0,0,0,0,1],[0,0,0,1,0],[1,0,1,0,0],[0,1,0,0,0]],    // 5×4
+  sparkle:   [[0,1,0],[1,1,1],[0,1,0]],                            // 3×3
+  note:      [[0,1,1],[0,1,0],[1,1,0],[1,1,0]],                    // 3×4
+  z:         [[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],            // 3×5 (big z)
+  zSmall:    [[1,1,1],[0,0,1],[0,1,0],[1,1,1]],                    // 3×4 (small z)
+  sweat:     [[1],[1]]                                             // 1×2
+};
+
+// ─── BACKGROUND ──────────────────────────────────────────────
+
+// Single-pixel stars, kept to the side columns so they never sit in the
+// icon area above Clawd's head (columns 3-12). Optional: skip drawStars()
+// for indoor scenes, or pass cells to hide while something is drawn there.
+const STARS = [[0,1],[1,4],[15,0],[14,3]];
+
+function drawBg() {
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = PALETTE.background.bg;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+}
+
+function drawGround(row = 15) {
+  for (let x = 0; x < GW; x++) px(x, row, PALETTE.background.ground);
+}
+
+// Twinkle is tied to loop progress (f / TOTAL) so the last frame flows into the first.
+// hide: optional list of [x, y] stars to skip this frame
+function drawStars(f, hide = []) {
+  for (const [x, y] of STARS) {
+    if (hide.some(([hx, hy]) => hx === x && hy === y)) continue;
+    const tw = Math.sin((f / TOTAL) * Math.PI * 4 + x * 1.3 + y * 0.7);
+    px(x, y, tw > 0.5 ? PALETTE.stars.bright : PALETTE.stars.dim);
+  }
+}
+
+// ─── DRAW FUNCTIONS ──────────────────────────────────────────
+
+// opts:
+//   eyes:   'forward' | 'look_right' | 'look_left' | 'look_down' | 'look_up'
+//           | 'blink' | 'closed' | 'happy'
+//   mini:   use the 10×5 body
+//   squash: exhale pose — body one row lower with shorter legs, feet stay put
+//           (use breathe(f) for a looping breath)
+//   blush:  0-1, drawn on top of the body so draw order never hides it
+function drawClawd(ox, oy, opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  const legRow = s.height - 1;
+  // squash: everything above the last leg row moves down one; that leg row is dropped
+  const yOf = r => (opts.squash && r < legRow ? r + 1 : r);
+  for (let r = 0; r < s.height; r++) {
+    if (opts.squash && r === legRow - 1 && !opts.mini) continue;
+    for (let c = 0; c < s.width; c++) {
+      if (s.data[r][c] === 1) px(ox + c, oy + yOf(r), PALETTE.clawd.body);
+    }
+  }
+  const dy = opts.squash ? 1 : 0;
+  const el = s.anchors.eyeLeft, er = s.anchors.eyeRight;
+  const ev = EYES[opts.eyes || 'forward'];
+  if (ev === 'closed') {
+    for (const e of [el, er]) {
+      px(ox + e.x - 1, oy + e.y + dy, PALETTE.clawd.lid);
+      px(ox + e.x, oy + e.y + dy, PALETTE.clawd.lid);
+    }
+  } else if (ev === 'happy') {
+    for (const e of [el, er]) {  // ^ shape
+      px(ox + e.x, oy + e.y + dy, PALETTE.clawd.lid);
+      px(ox + e.x - 1, oy + e.y + 1 + dy, PALETTE.clawd.lid);
+      px(ox + e.x + 1, oy + e.y + 1 + dy, PALETTE.clawd.lid);
+    }
+  } else if (ev) {
+    px(ox + el.x + ev[0], oy + el.y + ev[1] + dy, PALETTE.clawd.eye);
+    px(ox + er.x + ev[2], oy + er.y + ev[3] + dy, PALETTE.clawd.eye);
+  }
+  if (opts.blush) drawBlush(ox, oy + dy, opts.blush, opts);
+}
+
+// Looping breath: true on exhale frames. period in frames; pick a divisor of TOTAL
+function breathe(f, period = 16) {
+  return (f % period) >= period / 2;
+}
+
+// Claw poses, drawn after drawClawd. Pixels stay inside the screen when Clawd
+// stands at the standard spot (full: x=1, mini: any x where the body fits).
+//   'wave'  : claw straight up, 2 cells (cheering, alarm, hello)
+//   'raise' : claw up 1 cell (thinking, "hmm", claw to chin)
+//   'down'  : claw reaching down, 2 cells (typing, pressing, picking up)
+//   'out'   : diagonal up and out, 2 cells (big celebration; can reach the edge)
+function drawClaw(ox, oy, side = 'right', pose = 'wave', opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  const h = side === 'right' ? s.anchors.handRight : s.anchors.handLeft;
+  const dir = side === 'right' ? 1 : -1;
+  const x = ox + h.x, y = oy + h.y + (opts.squash ? 1 : 0);
+  const body = PALETTE.clawd.body;
+  if (pose === 'wave') { px(x, y - 1, body); px(x, y - 2, body); }
+  else if (pose === 'raise') { px(x, y - 1, body); }
+  else if (pose === 'down') { px(x, y + 2, body); px(x, y + 3, body); }
+  else if (pose === 'out') { px(x + dir, y - 1, body); px(x + dir * 2, y - 2, body); }
+}
+
+// Kept for older animations: the original diagonal raised claw
+function drawWave(ox, oy, side = 'right', opts = {}) {
+  drawClaw(ox, oy, side, 'out', opts);
+}
+
+// Blush: one pink pixel below and outside each eye. Draw after drawClawd,
+// or pass { blush } to drawClawd instead.
+function drawBlush(ox, oy, alpha, opts = {}) {
+  const s = opts.mini ? CLAWD_MINI : CLAWD;
+  px(ox + s.anchors.eyeLeft.x - 1, oy + s.anchors.eyeLeft.y + 1, PALETTE.fx.blush, alpha);
+  px(ox + s.anchors.eyeRight.x + 1, oy + s.anchors.eyeRight.y + 1, PALETTE.fx.blush, alpha);
+}
+
+function drawIcon(name, x, y, col, alpha = 1) {
+  const icon = ICONS[name];
+  for (let r = 0; r < icon.length; r++) {
+    for (let c = 0; c < icon[r].length; c++) {
+      if (icon[r][c] === 1) px(x + c, y + r, col, alpha);
+    }
+  }
+}
+
+// ─── PARTICLE SYSTEM ─────────────────────────────────────────
+// Seeded RNG so every loop (and the device export) plays identically.
+// Never use Math.random() in an animation.
+let seed = 1;
+function rand() {
+  seed = (seed * 16807) % 2147483647;
+  return (seed - 1) / 2147483646;
+}
+
+let particles = [];
+
+// A particle pops up, drifts (default: up and slightly sideways, then falls back
+// under gravity) and disappears after `life` frames. Defaults: life 10 frames,
+// rising ~0.3-0.8 cells/frame, gravity 0.08. Override any of them in opts.
+// Plan bursts so every particle dies before the loop seam.
+function addParticle(x, y, col, opts = {}) {
+  particles.push({
+    x, y, col,
+    vx: opts.vx ?? (rand() - 0.5) * 0.6,
+    vy: opts.vy ?? -rand() * 0.5 - 0.3,
+    gravity: opts.gravity ?? 0.08,
+    life: opts.life ?? 10
+  });
+}
+
+function tickParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.life -= 1;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    px(p.x, p.y, p.col);
+  }
+}
+
+function resetLoop() {
+  particles = [];
+  seed = 1;
+}
+
+// ─── EASING FUNCTIONS ────────────────────────────────────────
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3) / 2; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// ─── PHASES ──────────────────────────────────────────────────
+// Phases are lists of [name, frames]; the frame counts must add up to TOTAL.
+// phase(f, PHASES) -> { ph: name, i: frame within the phase, n: phase length,
+//                       pt: progress 0..1 (i / n) }
+function phase(f, phases) {
+  let start = 0;
+  for (const [name, n] of phases) {
+    if (f < start + n) return { ph: name, i: f - start, n, pt: (f - start) / n };
+    start += n;
+  }
+  const [name, n] = phases[phases.length - 1];
+  return { ph: name, i: n - 1, n, pt: (n - 1) / n };
+}
+
+// === YOUR ANIMATION HERE ====================================
+// ─── CODING SCENE: shared laptop + typing pose ───────────────
+// Same framing as tool_use.html, so coding <-> tool_use flips only change the screen:
+//   Full Clawd at drawClawd(1, 7), drawn first; the laptop covers his lower body.
+//   Lid: cols 3-12, rows 10-13 (top bezel row 10, side bezels cols 3 and 12)
+//   Screen: cols 4-11, rows 11-13. Keyboard deck: cols 2-13, row 14. Row 15 stays black.
+const CX = 1, CY = 7;
+const LAPTOP = { x: 3, y: 10, w: 10, h: 4, deckX: 2, deckW: 12, deckY: 14 };
+
+// Eight lines of "code", 8 cells wide: k = keyword, f = function, s = string, . = space
+const CODE = ['kk.fff..', '..ssss.f', '..k.sss.', '....ff..',
+              'kkk.s...', '..fff.ss', '..sss...', 'k.ff....'];
+const CODE_COL = { k: PALETTE.code.kw, f: PALETTE.code.fn, s: PALETTE.code.str };
+// Deck cell that lights up on each keystroke (one per 2-frame beat)
+const KEYS = [4, 9, 5, 8, 3, 11, 7, 9];  // left half on left-claw beats, right half on right-claw beats; never under the cursor
+
+function drawCodeLine(line, y, upto) {
+  for (let c = 0; c < upto && c < 8; c++) {
+    if (line[c] !== '.') px(4 + c, y, CODE_COL[line[c]]);
+  }
+}
+
+// Screen for main-loop frame mf (0..31): two finished lines, and the bottom line
+// being typed two cells per frame with a cursor. Scrolls one line every 4 frames:
+// 8 lines × 4 frames = 32 frames, so it wraps exactly.
+function drawCode(mf) {
+  const s = Math.floor(mf / 4), i = mf % 4;
+  drawCodeLine(CODE[s % 8], 11, 8);
+  drawCodeLine(CODE[(s + 1) % 8], 12, 8);
+  drawCodeLine(CODE[(s + 2) % 8], 13, (i + 1) * 2);
+  if (i < 3) px(4 + (i + 1) * 2, 13, PALETTE.code.cursor);
+}
+
+// h = visible lid height in rows (4 = open, 1 = closed flat on the deck, 0 = none)
+function drawLaptop(h = 4, mf = null) {
+  const L = PALETTE.laptop;
+  for (let x = LAPTOP.deckX; x < LAPTOP.deckX + LAPTOP.deckW; x++) px(x, LAPTOP.deckY, L.deck);
+  if (h <= 0) return;
+  const top = LAPTOP.y + LAPTOP.h - h;
+  for (let y = top; y < LAPTOP.y + LAPTOP.h; y++) {
+    for (let x = LAPTOP.x; x < LAPTOP.x + LAPTOP.w; x++) {
+      const edge = y === top || x === LAPTOP.x || x === LAPTOP.x + LAPTOP.w - 1 || h === 1;
+      px(x, y, edge ? L.bezel : L.screen);
+    }
+  }
+  if (h === 4 && mf !== null) drawCode(mf);
+}
+
+// One keystroke per 2-frame beat: the claws take turns reaching down to the
+// keys, and a key on the deck flashes under each press.
+function drawTypingClaws(mf, cy = CY) {
+  const beat = Math.floor(mf / 2) % 2;
+  drawClaw(CX, cy, beat ? 'right' : 'left', 'down');
+}
+function drawKeyFlash(mf) {
+  if (mf % 2 === 0) px(KEYS[(mf / 2) % KEYS.length], LAPTOP.deckY, PALETTE.laptop.key);
+}
+
+// A full main-loop frame. Specials open and close with these, mapped onto the
+// main loop's frame numbers, so they cut in and out without a jump.
+function drawMainFrame(mf, eyes) {
+  drawClawd(CX, CY, { eyes: eyes ?? ((mf === 22 || mf === 23) ? 'blink' : 'look_down') });
+  drawTypingClaws(mf);
+  drawLaptop(4, mf);
+  drawKeyFlash(mf);
+}
+// Main-loop frame for special frame f: the first frames replay main 0,1,2...,
+// the last frames replay main ...29,30,31 so the next main loop (frame 0) follows on.
+const MAIN_TOTAL = 32;
+function mainFrameAt(f) { return f < TOTAL / 2 ? f : MAIN_TOTAL - (TOTAL - f); }
+
+
+const NAME = 'clawd coding: reading the docs';
+const FPS = 8;
+const DUR = 5;
+const TOTAL = FPS * DUR;  // 40
+
+// Clawd folds the laptop shut, lifts an open book into the same spot and reads,
+// turns a page, gets it (sparkle), puts the book down and opens the laptop again.
+const PHASES = [['type', 4], ['close', 3], ['bookIn', 4], ['read', 16], ['aha', 4],
+                ['bookOut', 3], ['open', 3], ['type2', 3]];
+
+// Open book (10×4) in the laptop's footprint, cols 3-12, rows 10-13:
+// two cream pages with lines of text, a darker gutter, blue cover underneath
+const BOOK_A = [
+  [0,  'p','p','p','g','g','p','p','p', 0 ],
+  ['c','t','t','p','g','g','t','t','p','c'],
+  ['c','p','t','t','g','g','p','t','t','c'],
+  ['c','c','c','c','c','c','c','c','c','c']
+];
+const BOOK_B = [  // the next spread, after the page turn
+  [0,  'p','p','p','g','g','p','p','p', 0 ],
+  ['c','t','p','t','g','g','t','t','t','c'],
+  ['c','t','t','p','g','g','t','p','p','c'],
+  ['c','c','c','c','c','c','c','c','c','c']
+];
+const BOOK_COLORS = { c: PALETTE.book.cover, p: PALETTE.book.page, g: PALETTE.book.gutter, t: PALETTE.book.text };
+
+// rows: how many of the book's rows show, from the bottom (it rises out from behind the deck)
+function drawBook(sprite, rows = 4) {
+  drawSprite(sprite.slice(4 - rows), LAPTOP.x, LAPTOP.y + 4 - rows, BOOK_COLORS);
+}
+
+// Page turn (3 frames): a page lifts off the right page, stands over the gutter, lands left
+function drawPageTurn(k) {
+  const P = PALETTE.book.page;
+  if (k === 0) { for (let x = 9; x <= 11; x++) for (let y = 11; y <= 12; y++) px(x, y, P); px(10, 9, P); px(10, 10, P); }
+  if (k === 1) { for (let y = 8; y <= 12; y++) { px(7, y, P); px(8, y, P); } }
+  if (k === 2) { for (let x = 4; x <= 6; x++) for (let y = 11; y <= 12; y++) px(x, y, P); px(5, 9, P); px(5, 10, P); }
+}
+
+function render(f) {
+  const { ph, i, pt } = phase(f, PHASES);
+  drawBg();
+
+  if (ph === 'type' || ph === 'type2') {
+    drawMainFrame(mainFrameAt(f));
+    return;
+  }
+
+  let eyes = 'look_down', lid = 1, book = null, rows = 4, hold = false, turn = -1;
+
+  if (ph === 'close') {
+    lid = 3 - i;                 // lid folds down: 3, 2, 1 rows
+    eyes = i < 2 ? 'look_down' : 'forward';
+  } else if (ph === 'bookIn') {
+    book = BOOK_A; rows = i + 1;
+    eyes = 'forward';
+    hold = i >= 1;
+  } else if (ph === 'read') {
+    hold = true;
+    book = i < 9 ? BOOK_A : BOOK_B;
+    if (i >= 7 && i <= 9) turn = i - 7;
+    if (i === 4 || i === 13) eyes = 'blink';
+  } else if (ph === 'aha') {
+    hold = true;
+    book = BOOK_B;
+    eyes = 'forward';
+    drawIcon('sparkle', 6, 2, PALETTE.ui.mark);
+  } else if (ph === 'bookOut') {
+    book = BOOK_B; rows = 3 - i;
+    hold = i < 1;
+  } else if (ph === 'open') {
+    lid = 2 + i;                 // 2, 3, 4 rows; full lid shows the code again
+  }
+
+  drawClawd(CX, CY, { eyes });
+  if (hold) { drawClaw(CX, CY, 'left', 'down'); drawClaw(CX, CY, 'right', 'down'); }
+  drawLaptop(lid, mainFrameAt(f));
+  if (book) drawBook(book, rows);
+  if (turn >= 0) drawPageTurn(turn);
+}
+
+// ─── LOOP (browser preview only; export.mjs calls resetLoop/render directly) ──
+let startTime = null;
+let lastFrame = -1;
+
+function loop(ts) {
+  if (startTime === null) startTime = ts;
+  const frame = Math.floor((ts - startTime) / 1000 * FPS) % TOTAL;
+
+  // Step through every frame in order so particle state matches the export
+  while (lastFrame !== frame) {
+    lastFrame = (lastFrame + 1) % TOTAL;
+    if (lastFrame === 0) resetLoop();
+    render(lastFrame);
+  }
+
+  document.getElementById('info').textContent =
+    `${NAME} - frame ${frame + 1} / ${TOTAL}  |  ${FPS} fps, ${DUR}s loop`;
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
