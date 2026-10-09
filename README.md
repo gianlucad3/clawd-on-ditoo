@@ -120,7 +120,10 @@ A few settings (`device.mac`, `device.channel`, `sounds.audio_device`) need a re
 ## The full CLI
 
 ```
-clawd start [--mac MAC] [--simulate] [--no-sound] [--no-ears] [--foreground] [-v]
+clawd start [--mac MAC] [--channel N] [--simulate] [--foreground] [-v]
+            [--no-sound] [--audio-device NAME] [--no-ears]
+            [--no-agent-badge]                 hide the finished-subagent count
+            [--moods DIR | --no-moods]         mood overrides (default ~/.clawd/moods)
 clawd stop
 clawd state [--set STATE]              poke the state machine directly
 clawd poke / chirp / demo              mess with him
@@ -156,7 +159,12 @@ Wired into Claude Code (via `install-hooks`) he does this automatically:
 
 - **TodoWrite → a real progress bar** (completed / total todos).
 - **Subagent finishes → an "agents home" tally badge** + a delighted poke;
-  `SessionStart` zeroes it.
+  `SessionStart` zeroes it. Hide the badge with `clawd start --no-agent-badge`.
+- **Per-event animations** (with the mood overrides from `assets/moods/`): a
+  different `tool_use` loop per tool (Bash, Edit, Read, web, subagents), its own
+  `alert` for a permission prompt or a wait for input, `happy` / `alert` variants
+  when a test run passes or fails, and one-shot scenes on `PreCompact` (compact)
+  and `SessionEnd` (goodbye).
 - **`clawd watch`** polls a repo with `gh`: a **new PR**, **CI red/green**, or a
   **merge** triggers a banner (+ mood + voice). Run it inside your repo, or point
   it anywhere with `--repo owner/name`.

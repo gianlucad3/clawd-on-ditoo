@@ -641,7 +641,7 @@ def main(argv=None) -> int:
                          help="Directory of mood manifests (idle.json, happy.json…) that replace the "
                               "built-in animations (default ~/.clawd/moods)")
     p_start.add_argument("--no-moods", action="store_true", help="Ignore mood manifests; use built-in animations")
-    p_start.add_argument("--audio-device", default=None, help="Output device for sounds (default DitooPro)")
+    p_start.add_argument("--audio-device", default=None, help="Output device for sounds (default: sounds.audio_device in ~/.clawd/config.json)")
     p_start.add_argument("--foreground", action="store_true", help="Run in foreground (default: background)")
     p_start.add_argument("-v", "--verbose", action="store_true")
     p_start.set_defaults(func=cmd_start)
