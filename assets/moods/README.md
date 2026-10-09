@@ -15,3 +15,7 @@ Install them with
 then restart the daemon (`bin/clawd start`). `clawd start --no-moods`
 goes back to the built-in sprites. To change a mood, edit its HTML (open
 it in a browser to preview) and rerun `build.sh`.
+
+To review them all at once, draw every frame into one PNG (needs Pillow):
+
+    python3 assets/moods/overview.py   # writes ~/.clawd/moods-overview.png
